@@ -1,0 +1,428 @@
+openapi: 3.0.3
+info:
+  title: GHINFE API
+  description: |
+    API de testes da biblioteca GHINFE para emissão de NF-e.
+    Use os endpoints em modo mock para validar integração sem certificado real.
+  version: 0.6.0
+  contact:
+    name: GHINFE
+servers:
+  - url: http://localhost:3333
+    description: Servidor local de desenvolvimento
+
+tags:
+  - name: NF-e
+    description: Operações de Nota Fiscal Eletrônica
+  - name: NFC-e
+    description: Cupom Fiscal Eletrônico (modelo 65)
+  - name: NFS-e
+    description: Nota Fiscal de Serviço Eletrônica
+  - name: SEFAZ
+    description: Endpoints e status SEFAZ
+  - name: Reforma
+    description: IBS/CBS (base PL_010)
+  - name: Sistema
+    description: Health check e informações
+
+paths:
+  /health:
+    get:
+      tags: [Sistema]
+      summary: Health check
+      responses:
+        '200':
+          description: API operacional
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  library:
+                    type: string
+                    example: ghinfe
+
+  /nfe/xml:
+    post:
+      tags: [NF-e]
+      summary: Gerar XML da NF-e
+      description: Monta o XML conforme layout SEFAZ 4.00 a partir do objeto de domínio.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NFeDocumento'
+      responses:
+        '200':
+          description: XML gerado com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chaveAcesso:
+                    type: string
+                  xml:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ErroValidacao'
+
+  /nfe/validar-xsd:
+    post:
+      tags: [NF-e]
+      summary: Validar XML contra XSD
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [xml]
+              properties:
+                xml: { type: string }
+      responses:
+        '200':
+          description: XML válido
+        '422':
+          description: Erro de validação XSD
+
+  /nfce/xml:
+    post:
+      tags: [NFC-e]
+      summary: Gerar XML NFC-e (modelo 65)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NFCeDocumento'
+      responses:
+        '200':
+          description: XML gerado
+
+  /nfce/enviar-mock:
+    post:
+      tags: [NFC-e]
+      summary: Enviar NFC-e (mock SEFAZ)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NFCeDocumento'
+      responses:
+        '200':
+          description: Retorno mock
+
+  /nfe/chave:
+    post:
+      tags: [NF-e]
+      summary: Gerar chave de acesso
+      description: Gera chave NF-e de 44 dígitos com DV módulo 11.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [uf, cnpj, serie, numero]
+              properties:
+                uf: { type: string, example: 'SP' }
+                cnpj: { type: string, example: '12345678000199' }
+                modelo: { type: string, example: '55' }
+                serie: { type: integer, example: 1 }
+                numero: { type: integer, example: 42 }
+                tipoEmissao: { type: integer, example: 1 }
+                codigoNumerico: { type: string, example: '12345678' }
+      responses:
+        '200':
+          description: Chave gerada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chaveAcesso: { type: string }
+                  valida: { type: boolean, example: true }
+
+  /nfe/cancelar-mock:
+    post:
+      tags: [NF-e]
+      summary: Cancelar NF-e (mock)
+      description: Gera XML do evento 110111 e simula retorno SEFAZ.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NFeCancelamento'
+      responses:
+        '200':
+          description: Evento registrado (mock)
+        '422':
+          $ref: '#/components/responses/ErroSefaz'
+
+  /nfe/cce-mock:
+    post:
+      tags: [NF-e]
+      summary: Carta de Correção (mock)
+      description: Gera XML do evento 110110 e simula retorno SEFAZ.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NFeCartaCorrecao'
+      responses:
+        '200':
+          description: Evento registrado (mock)
+        '422':
+          $ref: '#/components/responses/ErroSefaz'
+
+  /nfe/enviar-mock:
+    post:
+      tags: [NF-e]
+      summary: Enviar NF-e (mock SEFAZ)
+      description: |
+        Gera XML, simula assinatura e envia para mock da SEFAZ.
+        Útil para testar fluxo completo sem certificado A1.
+      parameters:
+        - in: query
+          name: cenario
+          schema:
+            type: string
+            enum: [autorizado, duplicidade, schema, certificado, paralisado]
+            default: autorizado
+          description: Cenário de retorno simulado da SEFAZ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NFeDocumento'
+      responses:
+        '200':
+          description: Retorno da SEFAZ (mock)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoEmissao'
+        '422':
+          description: Rejeição SEFAZ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroSefaz'
+
+  /nfe/cenarios-mock:
+    get:
+      tags: [NF-e]
+      summary: Listar cenários mock disponíveis
+      responses:
+        '200':
+          description: Lista de cenários
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cenarios:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        descricao:
+                          type: string
+                        cStat:
+                          type: string
+
+components:
+  responses:
+    ErroValidacao:
+      description: Erro de validação
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+
+  schemas:
+    NFeEndereco:
+      type: object
+      required: [logradouro, numero, bairro, codigoMunicipio, municipio, uf, cep]
+      properties:
+        logradouro: { type: string, example: 'Rua das Flores' }
+        numero: { type: string, example: '100' }
+        complemento: { type: string }
+        bairro: { type: string, example: 'Centro' }
+        codigoMunicipio: { type: string, example: '3550308' }
+        municipio: { type: string, example: 'São Paulo' }
+        uf: { type: string, example: 'SP' }
+        cep: { type: string, example: '01001000' }
+        telefone: { type: string }
+
+    NFeDocumento:
+      type: object
+      required: [ide, emitente, destinatario, itens]
+      properties:
+        chaveAcesso:
+          type: string
+          description: Opcional — gerada automaticamente se omitida
+          example: '35260712345678000199550010000000011000000011'
+        ambiente:
+          type: integer
+          enum: [1, 2]
+          example: 2
+        ide:
+          type: object
+          properties:
+            uf: { type: string, example: 'SP' }
+            codigoMunicipio: { type: string, example: '3550308' }
+            serie: { type: integer, example: 1 }
+            numero: { type: integer, example: 1 }
+            naturezaOperacao: { type: string, example: 'VENDA' }
+        emitente:
+          type: object
+          properties:
+            cnpj: { type: string, example: '12345678000199' }
+            razaoSocial: { type: string, example: 'EMPRESA EXEMPLO LTDA' }
+            ie: { type: string, example: '123456789' }
+            crt: { type: string, example: '3' }
+            endereco:
+              $ref: '#/components/schemas/NFeEndereco'
+        destinatario:
+          type: object
+          properties:
+            cpf: { type: string, example: '12345678909' }
+            razaoSocial: { type: string, example: 'CONSUMIDOR FINAL' }
+            indIEDest: { type: integer, example: 9 }
+            endereco:
+              $ref: '#/components/schemas/NFeEndereco'
+        itens:
+          type: array
+          items:
+            type: object
+            properties:
+              codigo: { type: string, example: '001' }
+              descricao: { type: string, example: 'PRODUTO TESTE' }
+              ncm: { type: string, example: '84713012' }
+              cfop: { type: string, example: '5102' }
+              unidade: { type: string, example: 'UN' }
+              quantidade: { type: number, example: 1 }
+              valorUnitario: { type: number, example: 100 }
+              valorTotal: { type: number, example: 100 }
+              cst: { type: string, example: '00' }
+              aliquotaIcms: { type: number, example: 18 }
+              valorIcms: { type: number, example: 18 }
+        frete:
+          type: object
+          properties:
+            modalidade: { type: integer, example: 9 }
+            valor: { type: number }
+        pagamentos:
+          type: array
+          items:
+            type: object
+            properties:
+              forma: { type: string, example: '01' }
+              valor: { type: number, example: 100 }
+
+    ResultadoEmissao:
+      type: object
+      properties:
+        chaveAcesso: { type: string }
+        retorno:
+          type: object
+          properties:
+            sucesso: { type: boolean }
+            autorizado: { type: boolean }
+            cStat: { type: string }
+            xMotivo: { type: string }
+            protocolo: { type: string }
+        xmlGerado: { type: string }
+        mock: { type: boolean }
+
+    NFeCancelamento:
+      type: object
+      required: [chaveAcesso, cnpj, uf, protocolo, justificativa]
+      properties:
+        chaveAcesso: { type: string }
+        cnpj: { type: string, example: '12345678000199' }
+        uf: { type: string, example: 'SP' }
+        ambiente: { type: integer, example: 2 }
+        protocolo: { type: string, example: '135260000000001' }
+        justificativa:
+          type: string
+          minLength: 15
+          example: 'Cancelamento por erro de digitacao no pedido'
+
+    NFeCartaCorrecao:
+      type: object
+      required: [chaveAcesso, cnpj, uf, correcao]
+      properties:
+        chaveAcesso: { type: string }
+        cnpj: { type: string, example: '12345678000199' }
+        uf: { type: string, example: 'SP' }
+        ambiente: { type: integer, example: 2 }
+        sequencia: { type: integer, example: 1 }
+        correcao:
+          type: string
+          minLength: 15
+          example: 'Correcao do endereco de entrega para Rua Nova, 500'
+
+    NFCeDocumento:
+      type: object
+      required: [ide, emitente, itens, csc]
+      properties:
+        ambiente: { type: integer, example: 2 }
+        ide:
+          type: object
+          properties:
+            uf: { type: string, example: 'SP' }
+            codigoMunicipio: { type: string, example: '3550308' }
+            serie: { type: integer, example: 1 }
+            numero: { type: integer, example: 1 }
+        emitente:
+          type: object
+          properties:
+            cnpj: { type: string }
+            razaoSocial: { type: string }
+            ie: { type: string }
+            crt: { type: string, example: '1' }
+            endereco:
+              $ref: '#/components/schemas/NFeEndereco'
+        destinatario:
+          type: object
+          properties:
+            cpf: { type: string }
+            razaoSocial: { type: string }
+        itens:
+          type: array
+          items:
+            type: object
+        csc:
+          type: object
+          required: [idCSC, codigo]
+          properties:
+            idCSC: { type: string, example: '000001' }
+            codigo: { type: string, example: 'SEU-CSC-SEFAZ' }
+
+    ErroSefaz:
+      type: object
+      properties:
+        error: { type: string, example: 'SefazError' }
+        code: { type: string, example: 'SEFAZ_204' }
+        cStat: { type: string }
+        xMotivo: { type: string }
+
+    Erro:
+      type: object
+      properties:
+        error: { type: string }
+        code: { type: string }
+        message: { type: string }

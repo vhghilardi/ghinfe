@@ -1,0 +1,55 @@
+{
+  "name": "ghinfe",
+  "version": "0.6.0",
+  "description": "Biblioteca Node.js para emissão de NF-e, NFC-e e NFS-e — geração de XML, assinatura A1, envio SEFAZ e filas Bull/Redis",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/api/server.js",
+    "example:nfe": "node examples/emitir-nfe.js",
+    "example:mock": "node examples/mock-sefaz.js",
+    "example:chave": "node examples/gerar-chave.js",
+    "example:eventos": "node examples/eventos-nfe.js",
+    "example:xsd": "node examples/validar-xsd.js",
+    "example:nfce": "node examples/emitir-nfce.js",
+    "example:nfse": "node examples/emitir-nfse.js",
+    "example:endpoints": "node examples/endpoints-sefaz.js",
+    "example:status": "node examples/status-sefaz.js",
+    "example:layouts": "node examples/layouts-nfse.js",
+    "example:reforma": "node examples/reforma-ibscbs.js",
+    "example:reforma-xml": "node examples/reforma-nfe-xml.js",
+    "example:nfse-eventos": "node examples/nfse-eventos.js",
+    "example:danfe": "node examples/gerar-danfe.js",
+    "schemas:download": "node scripts/download-schemas.js"
+  },
+  "keywords": [
+    "nfe",
+    "nfce",
+    "nfse",
+    "sefaz",
+    "nota-fiscal",
+    "fiscal",
+    "brasil",
+    "acbr"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.8",
+    "axios": "^1.7.9",
+    "bull": "^4.16.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ioredis": "^5.4.2",
+    "libxmljs2": "^0.37.0",
+    "node-forge": "^1.3.1",
+    "qrcode": "^1.5.4",
+    "swagger-ui-express": "^5.0.1",
+    "xml-crypto": "^6.0.0",
+    "xmlbuilder2": "^3.1.1",
+    "yamljs": "^0.3.0"
+  }
+}

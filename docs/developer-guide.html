@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GHINFE — Guia do Desenvolvedor</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --code-bg: #0d1117;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: 100vh;
+    }
+    nav {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 1.5rem 1rem;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    nav h2 {
+      font-size: 1.1rem;
+      color: var(--accent);
+      margin-bottom: 1rem;
+      padding: 0 0.5rem;
+    }
+    nav a {
+      display: block;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      margin-bottom: 2px;
+    }
+    nav a:hover { background: var(--border); color: var(--text); }
+    main {
+      padding: 2.5rem 3rem;
+      max-width: 900px;
+    }
+    h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+    .subtitle { color: var(--muted); margin-bottom: 2rem; font-size: 1.05rem; }
+    h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    h3 { font-size: 1.15rem; margin: 1.5rem 0 0.75rem; color: #c5d0e0; }
+    p { margin-bottom: 1rem; }
+    ul, ol { margin: 0 0 1rem 1.5rem; }
+    li { margin-bottom: 0.4rem; }
+    code {
+      background: var(--code-bg);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.88em;
+      font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      margin: 1rem 0 1.5rem;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    pre code { background: none; padding: 0; }
+    .badge {
+      display: inline-block;
+      background: var(--accent);
+      color: white;
+      font-size: 0.75rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin: 1rem 0;
+    }
+    .card h4 { margin-bottom: 0.5rem; color: var(--accent); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.9rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.6rem 0.8rem;
+      text-align: left;
+    }
+    th { background: var(--surface); color: var(--muted); }
+    .btn {
+      display: inline-block;
+      background: var(--accent);
+      color: white;
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      margin: 0.5rem 0.5rem 0.5rem 0;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin: 1rem 0;
+    }
+    .flow span {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+    .flow .arrow { color: var(--muted); border: none; background: none; }
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      nav { position: static; height: auto; }
+      main { padding: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <nav>
+      <h2>GHINFE</h2>
+      <a href="#intro">Introdução</a>
+      <a href="#instalacao">Instalação</a>
+      <a href="#arquitetura">Arquitetura</a>
+      <a href="#objeto">Objeto de domínio</a>
+      <a href="#xml">Geração XML</a>
+      <a href="#assinatura">Assinatura A1</a>
+      <a href="#sefaz">Envio SEFAZ</a>
+      <a href="#erros">Erros SEFAZ</a>
+      <a href="#fila">Fila Bull/Redis</a>
+      <a href="#sequelize">Integração Sequelize</a>
+      <a href="#swagger">Swagger / API</a>
+      <a href="#roadmap">Roadmap</a>
+    </nav>
+
+    <main>
+      <h1>GHINFE <span class="badge">v0.1</span></h1>
+      <p class="subtitle">Guia do desenvolvedor — biblioteca Node.js para NF-e, NFC-e e NFS-e</p>
+
+      <a class="btn" href="/docs" target="_blank">Abrir Swagger UI</a>
+      <a class="btn" href="https://github.com" style="background:#333">Repositório</a>
+
+      <section id="intro">
+        <h2>Introdução</h2>
+        <p>
+          A <strong>GHINFE</strong> é uma biblioteca modular para emissão de documentos fiscais eletrônicos no Brasil.
+          A API foi pensada de forma semelhante ao <strong>ACBr</strong>: você monta um objeto JavaScript com
+          cabeçalho, itens, frete e pagamentos; a biblioteca gera o XML oficial, assina com certificado A1,
+          envia via SOAP para a SEFAZ e trata o retorno.
+        </p>
+        <div class="flow">
+          <span>Objeto JS</span>
+          <span class="arrow">→</span>
+          <span>XML NF-e</span>
+          <span class="arrow">→</span>
+          <span>Assinatura A1</span>
+          <span class="arrow">→</span>
+          <span>SOAP SEFAZ</span>
+          <span class="arrow">→</span>
+          <span>Protocolo / Rejeição</span>
+        </div>
+      </section>
+
+      <section id="instalacao">
+        <h2>Instalação</h2>
+        <pre><code>git clone &lt;repo&gt; ghinfe
+cd ghinfe
+npm install
+cp .env.example .env
+npm start          # API + Swagger em http://localhost:3333
+npm run example:nfe</code></pre>
+        <p><strong>Requisitos:</strong> Node.js 18+, Redis (para filas Bull).</p>
+      </section>
+
+      <section id="arquitetura">
+        <h2>Arquitetura</h2>
+        <p>Cada responsabilidade está em um serviço isolado:</p>
+        <table>
+          <thead>
+            <tr><th>Serviço</th><th>Responsabilidade</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>NFeXmlService</code></td><td>Gera XML layout SEFAZ 4.00</td></tr>
+            <tr><td><code>NFeSignService</code></td><td>Assina <code>infNFe</code> com certificado .pfx</td></tr>
+            <tr><td><code>NFeSoapService</code></td><td>Envia SOAP e interpreta cStat</td></tr>
+            <tr><td><code>NFeService</code></td><td>Orquestra o fluxo completo</td></tr>
+            <tr><td><code>NFeQueue</code></td><td>Processamento assíncrono via Bull/Redis</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="objeto">
+        <h2>Objeto de domínio</h2>
+        <p>Monte o documento fiscal como um objeto JavaScript plano:</p>
+        <pre><code>const documento = {
+  chaveAcesso: '35260712345678000199550010000000011000000011', // 44 dígitos
+  ambiente: 2, // 1=Produção, 2=Homologação
+  ide: {
+    uf: 'SP',
+    codigoMunicipio: '3550308',
+    serie: 1,
+    numero: 1,
+    naturezaOperacao: 'VENDA',
+  },
+  emitente: {
+    cnpj: '12345678000199',
+    razaoSocial: 'EMPRESA EXEMPLO LTDA',
+    ie: '123456789012',
+    crt: '3',
+    endereco: { /* logradouro, numero, bairro, codigoMunicipio, municipio, uf, cep */ },
+  },
+  destinatario: { /* cpf ou cnpj, razaoSocial, endereco */ },
+  itens: [{
+    codigo: '001',
+    descricao: 'PRODUTO TESTE',
+    ncm: '84713012',
+    cfop: '5102',
+    unidade: 'UN',
+    quantidade: 1,
+    valorUnitario: 100,
+    valorTotal: 100,
+    cst: '00',
+    aliquotaIcms: 18,
+    valorIcms: 18,
+  }],
+  frete: { modalidade: 9 }, // 9 = sem frete
+  pagamentos: [{ forma: '01', valor: 100 }],
+};</code></pre>
+      </section>
+
+      <section id="xml">
+        <h2>Geração de XML</h2>
+        <pre><code>import { NFeService } from 'ghinfe';
+
+const service = new NFeService();
+const xml = service.gerarXml(documento);
+// Retorna string XML UTF-8, layout NF-e 4.00, sem assinatura</code></pre>
+        <div class="card">
+          <h4>NFeXmlBuilder</h4>
+          <p>O builder monta as seções <code>ide</code>, <code>emit</code>, <code>dest</code>, <code>det</code>, <code>total</code>, <code>transp</code> e <code>pag</code> conforme o Manual de Orientação do Contribuinte.</p>
+        </div>
+      </section>
+
+      <section id="assinatura">
+        <h2>Assinatura digital (A1)</h2>
+        <pre><code>import fs from 'fs';
+import { NFeService } from 'ghinfe';
+
+const service = new NFeService();
+const pfx = fs.readFileSync('./certs/certificado.pfx');
+
+const xmlAssinado = service.gerarXmlAssinado(documento, {
+  pfx,
+  senha: 'senha-do-certificado',
+});</code></pre>
+        <p>A assinatura usa XML-DSig enveloped no elemento <code>infNFe</code>, com RSA-SHA1 e C14N, conforme exigido pela SEFAZ.</p>
+        <pre><code>import { NFeSignService } from 'ghinfe';
+
+const signService = new NFeSignService();
+const info = signService.obterInfoCertificado(pfx, senha);
+console.log(info.validoAte); // data de expiração</code></pre>
+      </section>
+
+      <section id="sefaz">
+        <h2>Envio SEFAZ</h2>
+        <h3>Modo mock (desenvolvimento)</h3>
+        <pre><code>const service = new NFeService({ mock: true, mockScenario: 'autorizado' });
+const resultado = await service.emitir(documento, { pfx, senha });
+
+console.log(resultado.retorno.cStat);    // '100'
+console.log(resultado.retorno.protocolo); // número do protocolo</code></pre>
+        <p>Cenários mock disponíveis: <code>autorizado</code>, <code>duplicidade</code>, <code>schema</code>, <code>certificado</code>, <code>paralisado</code>.</p>
+
+        <h3>Modo produção/homologação real</h3>
+        <pre><code>import { SEFAZ_URLS } from 'ghinfe';
+
+const service = new NFeService({
+  mock: false,
+  sefazEndpoint: SEFAZ_URLS.SP.autorizacao,
+});</code></pre>
+      </section>
+
+      <section id="erros">
+        <h2>Tratamento de erros SEFAZ</h2>
+        <pre><code>import { SefazError } from 'ghinfe';
+
+try {
+  await service.enviar(xmlAssinado, chaveAcesso);
+} catch (error) {
+  if (error instanceof SefazError) {
+    console.log(error.cStat);   // ex: '204'
+    console.log(error.xMotivo); // ex: 'Rejeição: Duplicidade de NF-e'
+    console.log(error.isRejeicao()); // true para cStat 2xx
+  }
+}</code></pre>
+        <table>
+          <thead><tr><th>cStat</th><th>Significado</th></tr></thead>
+          <tbody>
+            <tr><td>100</td><td>Autorizado o uso da NF-e</td></tr>
+            <tr><td>103</td><td>Lote recebido com sucesso</td></tr>
+            <tr><td>104</td><td>Lote processado</td></tr>
+            <tr><td>204</td><td>Rejeição: Duplicidade de NF-e</td></tr>
+            <tr><td>225</td><td>Rejeição: Falha no Schema XML</td></tr>
+            <tr><td>280</td><td>Rejeição: Certificado Transmissor inválido</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="fila">
+        <h2>Fila Bull / Redis</h2>
+        <pre><code>import { NFeQueue } from 'ghinfe';
+
+const queue = new NFeQueue({
+  redis: { host: '127.0.0.1', port: 6379 },
+  nfeOptions: { mock: true },
+});
+
+await queue.adicionarEmissao({
+  documento,
+  certificado: { pfx, senha },
+});
+
+queue.onCompleted(async (resultado) => {
+  // persistir no banco
+});
+
+queue.onFailed(async (error, job) => {
+  console.error('Job falhou:', job.id, error.message);
+});</code></pre>
+        <p>A fila usa retry exponencial (3 tentativas) e é ideal para picos de emissão sem bloquear a API do seu sistema.</p>
+      </section>
+
+      <section id="sequelize">
+        <h2>Integração com Sequelize</h2>
+        <pre><code>// models/nota-fiscal.js
+export default (sequelize, DataTypes) => {
+  return sequelize.define('NotaFiscal', {
+    chave_acesso: { type: DataTypes.STRING(44), unique: true },
+    xml_nfe: DataTypes.TEXT,
+    xml_protocolo: DataTypes.TEXT,
+    protocolo: DataTypes.STRING(20),
+    status: DataTypes.STRING(3),
+    motivo: DataTypes.STRING(255),
+    autorizado_em: DataTypes.DATE,
+  });
+};
+
+// worker
+queue.onCompleted(async (resultado) => {
+  const payload = service.toPersistencePayload(resultado);
+  await NotaFiscal.create(payload);
+});</code></pre>
+      </section>
+
+      <section id="swagger">
+        <h2>Swagger / API de testes</h2>
+        <p>Com <code>npm start</code>, acesse:</p>
+        <ul>
+          <li><a href="/docs">/docs</a> — Swagger UI interativo</li>
+          <li><code>POST /nfe/xml</code> — gera XML a partir de JSON</li>
+          <li><code>POST /nfe/enviar-mock?cenario=duplicidade</code> — simula envio</li>
+          <li><code>GET /nfe/cenarios-mock</code> — lista cenários</li>
+        </ul>
+        <div class="card">
+          <h4>Teste rápido via curl</h4>
+          <pre><code>curl -X POST http://localhost:3333/nfe/xml \
+  -H "Content-Type: application/json" \
+  -d @examples/payload-nfe.json</code></pre>
+        </div>
+      </section>
+
+      <section id="roadmap">
+        <h2>Roadmap</h2>
+        <ul>
+          <li>Geração automática de chave de acesso (DV)</li>
+          <li>Cancelamento de NF-e (evento 110111)</li>
+          <li>Carta de Correção Eletrônica (CC-e)</li>
+          <li>NFC-e (modelo 65) e NFS-e</li>
+          <li>Validação XSD antes do envio</li>
+          <li>Endpoints SEFAZ por UF automáticos</li>
+        </ul>
+      </section>
+
+      <p style="margin-top:3rem;color:var(--muted);font-size:0.85rem;">
+        GHINFE — Biblioteca fiscal open source. Documentação gerada para v0.1.0.
+      </p>
+    </main>
+  </div>
+</body>
+</html>
