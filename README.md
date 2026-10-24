@@ -1,6 +1,6 @@
 # GHINFE
 
-Biblioteca Node.js para emissão de documentos fiscais eletrônicos brasileiros: **NF-e**, **NFC-e** e **NFS-e**.
+Biblioteca Node.js para emissão de documentos fiscais eletrônicos brasileiros: **NF-e**, **NFC-e**, **NFS-e** e **DC-e**.
 
 Inspirada na filosofia do [ACBr](https://projetoacbr.com.br/) (objeto de domínio → XML → assinatura → envio SEFAZ), a GHINFE separa responsabilidades em serviços modulares, prontos para integração com **Sequelize**, filas **Bull/Redis** e ambientes de alta escala.
 
@@ -9,6 +9,8 @@ Inspirada na filosofia do [ACBr](https://projetoacbr.com.br/) (objeto de domíni
 | Módulo | Status |
 |--------|--------|
 | Geração XML NF-e / NFC-e / NFS-e | ✅ |
+| DC-e (modelo 99): geração, autorização, consulta, status e cancelamento | ✅ |
+| DACE completa e resumida (HTML imprimível, CODE-128C + QR Code) | ✅ |
 | IBS/CBS injetado no XML NF-e (item + totais) | ✅ experimental |
 | Cancelamento e substituição NFS-e | ✅ |
 | DANFE / DANFCE (HTML imprimível) | ✅ |
@@ -236,6 +238,79 @@ const xml = service.gerarXml(documento);
 const { xml: xmlCompleto, qrCode } = service.gerarXmlAssinado(documento, { pfx, senha });
 ```
 
+### DC-e — Declaração de Conteúdo eletrônica (modelo 99)
+
+Para remessa de bens por pessoas físicas ou não contribuintes do ICMS. Layout 1.00 (PL_DCe_v1.00a + NT 2024.001), validado contra o XSD oficial em `schemas/dce/`.
+
+```javascript
+import { DCeService, DCE_TIPO_EMITENTE, DCE_MODALIDADE_TRANSPORTE } from 'ghinfe';
+
+const service = new DCeService();
+
+const documento = {
+  ambiente: 2,
+  ide: { uf: 'SP', serie: 1, numero: 42, tipoEmitente: DCE_TIPO_EMITENTE.MARKETPLACE },
+  emitente: { cpf: '...', razaoSocial: '...', endereco: { /* ... */ } },
+  marketplace: { cnpj: '...', razaoSocial: '...', site: 'www.exemplo.com.br' },
+  destinatario: { cpf: '...', razaoSocial: '...', endereco: { /* ... */ } },
+  itens: [{ descricao: 'LIVRO USADO', ncm: '49019900', quantidade: 2, valorUnitario: 35.5 }],
+  transporte: { modalidade: DCE_MODALIDADE_TRANSPORTE.CORREIOS },
+};
+
+const xml = service.gerarXml(documento, { validarXsd: true });
+const { xml: xmlAssinado, chaveAcesso, qrCode } = service.gerarXmlAssinado(documento, { pfx, senha });
+```
+
+- `tipoEmitente` define o grupo obrigatório: `fisco` (0), `marketplace` (1), nenhum na emissão própria (2), `transportadora` (3) ou `ect` (4). O CNPJ desse emissor compõe a chave de acesso.
+- Em homologação, `dest/xNome` recebe automaticamente o literal exigido pela SEFAZ.
+- Contingência off-line (`ide.tipoEmissao: 2`): o QR Code leva o parâmetro `sign`, por isso use `gerarXmlAssinado`.
+
+#### Comunicação com a SEFAZ (autorizador SEFA-PR, atende todas as UFs)
+
+```javascript
+const service = new DCeService({ certificado: { pfx, senha }, ambiente: 2 });
+
+await service.consultarStatus();                       // { emOperacao: true, cStat: '107', ... }
+
+const resultado = await service.emitir(documento);     // lança SefazError se rejeitada
+resultado.retorno.protocolo;                           // nProt
+resultado.retorno.xmlProc;                             // dceProc (DC-e + protDCe) — guarde este XML
+
+await service.consultar(resultado.chaveAcesso);        // cStat 100 (autorizada) / 101 (cancelada)
+
+await service.cancelar({                               // até 24h após a autorização
+  chaveAcesso: resultado.chaveAcesso,
+  protocolo: resultado.retorno.protocolo,
+  justificativa: 'Motivo com no minimo 15 caracteres',
+  emitente: { cpf: '...' },                            // mesmo usuário emitente da DC-e
+});
+```
+
+- TLS mútuo com o certificado A1; a raiz ICP-Brasil v10 (`src/sefaz/ca/`) é adicionada às CAs do Node, sem desligar a verificação do servidor.
+- `emitir(documento, { compactar: true })` usa `dceAutorizacaoZip` (GZip + Base64).
+- Emissão própria (`tipoEmitente: 2`) só é aceita para não contribuintes do ICMS; contribuintes recebem a rejeição 812.
+- Certificado em PEM (`cert.pem` + `key.pem`): `criarPfxDePem(certPem, keyPem, senha)` gera o PFX em memória.
+- Testes em homologação: `npm run example:dce-homologacao -- status` (veja as variáveis no topo de `examples/dce-homologacao.js`).
+
+#### DACE — Declaração Auxiliar de Conteúdo eletrônica
+
+```javascript
+import { DaceService } from 'ghinfe';
+
+const dace = new DaceService();
+const { html, folhas } = await dace.gerar(xmlDceProc);                        // completa (A4, com itens)
+const { html: etiqueta } = await dace.gerar(xmlDceProc, { modelo: 'resumida' }); // sem itens, 10×15 cm
+
+// ou direto do resultado da emissão
+const { html: dace2 } = await service.gerarDace(resultado);
+```
+
+- Segue o Manual DC-e — Anexo II: chave em blocos de 4 dígitos, código de barras CODE-128C (SVG, sem dependência) e QR Code do `infDCeSupl`.
+- Folhas adicionais repetem cabeçalho, código de barras, chave e remetente; ajuste com `itensPrimeiraFolha` / `itensDemaisFolhas`.
+- Homologação: "EMITIDA EM HOMOLOGAÇÃO" em marca d'água e nas informações complementares. Contingência: "EMITIDA EM CONTINGÊNCIA" no protocolo.
+- CPF mascarado por padrão (`123.***.***-09`, recomendação LGPD da NT 2024.001); use `mascararCpf: false` para exibir completo.
+- Exige o protocolo de autorização (use o `dceProc`), exceto em contingência.
+
 ### 2. Assinar com certificado A1
 
 ```javascript
@@ -376,6 +451,9 @@ npm run example:endpoints # Endpoints SEFAZ por UF
 npm run example:reforma-xml  # NF-e com IBSCBS no XML
 npm run example:nfse-eventos # Cancelamento / substituição NFS-e
 npm run example:danfe        # Gera HTML em tmp/
+npm run example:dce          # Gera DC-e (modelo 99) e valida XSD
+npm run example:dce-homologacao -- status  # DC-e real em homologação (requer certificado)
+npm run example:dace         # Gera DACE completa e resumida em tmp/
 npm run example:status   # Status SEFAZ mock
 npm run example:layouts  # ABRASF / GINFES / Betha / ISSNet
 npm run example:reforma  # Cálculo IBS/CBS

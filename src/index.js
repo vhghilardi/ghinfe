@@ -24,6 +24,27 @@ export { NFSeQueue } from './queue/NFSeQueue.js';
 export { NFSE_LAYOUTS, NFSE_MUNICIPIOS } from './nfse/constants/municipios.js';
 export { obterAdapter, NFSeLayoutAdapters } from './nfse/layouts/adapters.js';
 
+export { DCeService } from './dce/services/DCeService.js';
+export { DCeXmlService } from './dce/services/DCeXmlService.js';
+export { DCeXmlBuilder } from './dce/builders/DCeXmlBuilder.js';
+export { DCeSoapService } from './dce/services/DCeSoapService.js';
+export { DCeEventoXmlBuilder } from './dce/builders/DCeEventoXmlBuilder.js';
+export { DaceService } from './dce/dace/DaceService.js';
+export { extrairDadosDace } from './dce/dace/dace-extract.js';
+export { codificarCode128C, gerarSvgCode128C } from './utils/code128.utils.js';
+export { gerarUrlQrCodeDCe, assinarChaveQrCodeDCe } from './dce/utils/qrcode.utils.js';
+export {
+  DCE_VERSAO,
+  DCE_TIPO_EMITENTE,
+  DCE_TIPO_EMISSAO,
+  DCE_MODALIDADE_TRANSPORTE,
+  DCE_QRCODE_URL,
+  DCE_WEBSERVICES,
+  DCE_EVENTOS,
+  DCE_STATUS,
+} from './dce/constants/dce.js';
+export { criarHttpsAgentSefaz, ICP_BRASIL_RAIZ_V10 } from './sefaz/httpsAgent.js';
+
 export { DanfeService } from './danfe/DanfeService.js';
 export { extrairDadosDanfe, formatarChaveAcesso } from './danfe/xml-extract.js';
 
@@ -50,11 +71,14 @@ export { XsdValidationError } from './errors/XsdValidationError.js';
 
 export { SEFAZ_STATUS, SEFAZ_URLS, AMBIENTE, NFE_VERSAO, UF_IBGE } from './constants/sefaz.js';
 export { NFE_EVENTOS } from './nfe/types/NFeEvento.js';
-export { loadPfxCertificate } from './utils/certificate.utils.js';
+export { loadPfxCertificate, criarPfxDePem } from './utils/certificate.utils.js';
 export {
   gerarChaveAcesso,
   calcularDigitoVerificador,
   validarChaveAcesso,
   parseChaveAcesso,
   gerarCodigoNumerico,
+  gerarChaveAcessoDCe,
+  parseChaveAcessoDCe,
+  gerarCodigoNumericoDCe,
 } from './utils/chave.utils.js';

@@ -93,6 +93,94 @@ export function gerarChaveAcesso(params) {
 }
 
 /**
+ * Gera código numérico da DC-e (cDC, 6 dígitos).
+ * A SEFAZ rejeita (897) sequências repetidas (000000, 111111...) e cDC igual a nDC.
+ * @param {number} [numero] nDC da declaração
+ * @returns {string}
+ */
+export function gerarCodigoNumericoDCe(numero) {
+  for (;;) {
+    const cDC = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
+    if (/^(\d)\1{5}$/.test(cDC)) continue;
+    if (numero !== undefined && Number(cDC) === Number(numero)) continue;
+    return cDC;
+  }
+}
+
+/**
+ * Gera chave de acesso da DC-e (modelo 99, 44 dígitos).
+ *
+ * Composição: cUF(2) + AAMM(4) + CNPJ(14) + mod(2) + serie(3) + nDC(9) + tpEmis(1)
+ *   + tpEmit(1) + nSiteAutoriz(1) + cDC(6) + cDV(1)
+ *
+ * O CNPJ é o de quem emite/assina: Fisco, Marketplace, Transportadora, ECT
+ * ou o próprio usuário emitente (emissão própria).
+ *
+ * @param {{
+ *   uf: string,
+ *   cnpj: string,
+ *   serie: number,
+ *   numero: number,
+ *   tipoEmitente: number,
+ *   tipoEmissao?: number,
+ *   siteAutorizador?: number,
+ *   codigoNumerico?: string,
+ *   dataEmissao?: Date,
+ * }} params
+ * @returns {string}
+ */
+export function gerarChaveAcessoDCe(params) {
+  const cUF = UF_IBGE[params.uf?.toUpperCase()];
+  if (!cUF) {
+    throw new GhinfeError(`UF inválida: ${params.uf}`, 'UF_INVALIDA');
+  }
+
+  const cnpj = params.cnpj.replace(/\D/g, '');
+  if (cnpj.length !== 14) {
+    throw new GhinfeError('CNPJ deve conter 14 dígitos', 'CNPJ_INVALIDO');
+  }
+
+  const data = params.dataEmissao ?? new Date();
+  const aamm = `${String(data.getFullYear()).slice(-2)}${String(data.getMonth() + 1).padStart(2, '0')}`;
+
+  const serie = String(params.serie).padStart(3, '0');
+  const numero = String(params.numero).padStart(9, '0');
+  const tpEmis = String(params.tipoEmissao ?? 1);
+  const tpEmit = String(params.tipoEmitente);
+  const nSiteAutoriz = String(params.siteAutorizador ?? 0);
+  const cDC = (params.codigoNumerico ?? gerarCodigoNumericoDCe(params.numero)).padStart(6, '0');
+
+  const chave43 = `${cUF}${aamm}${cnpj}99${serie}${numero}${tpEmis}${tpEmit}${nSiteAutoriz}${cDC}`;
+  return chave43 + calcularDigitoVerificador(chave43);
+}
+
+/**
+ * Extrai campos da chave de acesso da DC-e.
+ * @param {string} chaveAcesso
+ */
+export function parseChaveAcessoDCe(chaveAcesso) {
+  const chave = chaveAcesso.replace(/\D/g, '');
+  if (chave.length !== 44) {
+    throw new GhinfeError('Chave de acesso deve ter 44 dígitos', 'CHAVE_INVALID_LENGTH');
+  }
+
+  return {
+    cUF: chave.substring(0, 2),
+    aamm: chave.substring(2, 6),
+    cnpj: chave.substring(6, 20),
+    modelo: chave.substring(20, 22),
+    serie: parseInt(chave.substring(22, 25), 10),
+    numero: parseInt(chave.substring(25, 34), 10),
+    tipoEmissao: parseInt(chave[34], 10),
+    tipoEmitente: parseInt(chave[35], 10),
+    siteAutorizador: parseInt(chave[36], 10),
+    codigoNumerico: chave.substring(37, 43),
+    digitoVerificador: chave[43],
+    valida: validarChaveAcesso(chave),
+  };
+}
+
+/**
  * Extrai campos da chave de acesso para conferência.
  * @param {string} chaveAcesso
  */

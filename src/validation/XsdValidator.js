@@ -39,14 +39,18 @@ export class XsdValidator {
    * Valida XML contra schema XSD.
    * @param {string} xml
    * @param {string} xsdPath
-   * @param {{ injetarAssinaturaStub?: boolean, modelo?: '55'|'65' }} [options]
+   * @param {{ injetarAssinaturaStub?: boolean, modelo?: '55'|'65'|'99' }} [options]
    * @returns {{ valido: true, avisos: string[] }}
    */
   static validar(xml, xsdPath, options = {}) {
     let xmlParaValidar = xml;
 
+    if (options.modelo === '99') {
+      xmlParaValidar = this.#compatibilizarDCe(xmlParaValidar);
+    }
+
     if (options.injetarAssinaturaStub) {
-      xmlParaValidar = this.#prepararXmlEstrutural(xml, options.modelo ?? '55');
+      xmlParaValidar = this.#prepararXmlEstrutural(xmlParaValidar, options.modelo ?? '55');
     }
 
     const schema = this.loadSchema(xsdPath);
@@ -79,17 +83,32 @@ export class XsdValidator {
   }
 
   /**
-   * Injeta elementos exigidos pelo XSD para validação estrutural pré-assinatura.
-   * O schema exige Signature (NF-e) ou infNFeSupl + Signature (NFC-e).
+   * O XSD da DC-e exige infSolicDCe, mas o grupo é exclusivo do Fisco (tpEmit=0):
+   * informá-lo nos demais casos gera rejeição 229. Para validar a estrutura sem
+   * enviar o grupo, injeta-se um infSolicDCe vazio apenas na cópia validada.
    * @param {string} xml
-   * @param {'55'|'65'} modelo
+   */
+  static #compatibilizarDCe(xml) {
+    if (xml.includes('<infSolicDCe>')) return xml;
+    return xml.replace('</infDCe>', '</infDCe><infSolicDCe><xSolic></xSolic></infSolicDCe>');
+  }
+
+  /**
+   * Injeta elementos exigidos pelo XSD para validação estrutural pré-assinatura.
+   * O schema exige Signature (NF-e/DC-e) ou infNFeSupl + Signature (NFC-e).
+   * @param {string} xml
+   * @param {'55'|'65'|'99'} modelo
    */
   static #prepararXmlEstrutural(xml, modelo) {
     if (xml.includes('</Signature>')) return xml;
 
-    const idMatch = xml.match(/Id="(NFe\d{44})"/);
+    const idMatch = xml.match(/Id="((?:NFe|DCe)\d{44})"/);
     const id = idMatch?.[1];
     if (!id) return xml;
+
+    if (modelo === '99') {
+      return xml.replace('</DCe>', `${this.#assinaturaStub(id)}</DCe>`);
+    }
 
     let complemento = '';
 

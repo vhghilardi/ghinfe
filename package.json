@@ -1,7 +1,7 @@
 {
   "name": "ghinfe",
   "version": "0.6.0",
-  "description": "Biblioteca Node.js para emissão de NF-e, NFC-e e NFS-e — geração de XML, assinatura A1, envio SEFAZ e filas Bull/Redis",
+  "description": "Biblioteca Node.js para emissão de NF-e, NFC-e, NFS-e e DC-e — geração de XML, assinatura A1, envio SEFAZ e filas Bull/Redis",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
@@ -20,12 +20,16 @@
     "example:reforma-xml": "node examples/reforma-nfe-xml.js",
     "example:nfse-eventos": "node examples/nfse-eventos.js",
     "example:danfe": "node examples/gerar-danfe.js",
+    "example:dce": "node examples/gerar-dce.js",
+    "example:dce-homologacao": "node examples/dce-homologacao.js",
+    "example:dace": "node examples/gerar-dace.js",
     "schemas:download": "node scripts/download-schemas.js"
   },
   "keywords": [
     "nfe",
     "nfce",
     "nfse",
+    "dce",
     "sefaz",
     "nota-fiscal",
     "fiscal",

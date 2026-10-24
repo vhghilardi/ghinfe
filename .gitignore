@@ -73,6 +73,12 @@ web_modules/
 .env.*
 !.env.example
 
+# Certificados digitais (chaves privadas de clientes)
+cert/
+certs/
+*.pfx
+*.p12
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

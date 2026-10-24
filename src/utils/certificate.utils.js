@@ -2,6 +2,28 @@ import forge from 'node-forge';
 import { GhinfeError } from '../errors/GhinfeError.js';
 
 /**
+ * Monta um PFX em memória a partir de certificado e chave PEM (ex.: cert.pem + key.pem),
+ * para uso nas APIs que recebem { pfx, senha }.
+ * @param {string} certificatePem
+ * @param {string} privateKeyPem Chave sem senha
+ * @param {string} senha Senha do PFX gerado
+ * @returns {Buffer}
+ */
+export function criarPfxDePem(certificatePem, privateKeyPem, senha) {
+  try {
+    const p12 = forge.pkcs12.toPkcs12Asn1(
+      forge.pki.privateKeyFromPem(privateKeyPem),
+      [forge.pki.certificateFromPem(certificatePem)],
+      senha,
+      { algorithm: '3des' }
+    );
+    return Buffer.from(forge.asn1.toDer(p12).getBytes(), 'binary');
+  } catch (error) {
+    throw new GhinfeError('Falha ao converter certificado/chave PEM em PFX', 'CERT_PEM_ERROR', error);
+  }
+}
+
+/**
  * Carrega certificado A1 (.pfx / .p12) e retorna chave privada + certificado PEM.
  * @param {Buffer|string} pfxBuffer
  * @param {string} password

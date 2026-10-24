@@ -31,6 +31,21 @@ export class NFeSignService {
   }
 
   /**
+   * Assina XML da DC-e (elemento infDCe). A Signature é anexada como último
+   * filho de DCe, após infDCeSupl, conforme sequência do XSD.
+   * @param {string} xmlDCe
+   * @param {Buffer|string} pfxBuffer
+   * @param {string} pfxPassword
+   * @returns {string}
+   */
+  assinarDCe(xmlDCe, pfxBuffer, pfxPassword) {
+    return this.#assinarElemento(xmlDCe, 'infDCe', pfxBuffer, pfxPassword, {
+      reference: "/*[local-name()='DCe']",
+      action: 'append',
+    });
+  }
+
+  /**
    * Assina XML de RPS/NFS-e (elemento InfRps — ABRASF e derivados).
    * @param {string} xmlRps
    * @param {Buffer|string} pfxBuffer
@@ -50,8 +65,9 @@ export class NFeSignService {
    * @param {string} tagName
    * @param {Buffer|string} pfxBuffer
    * @param {string} pfxPassword
+   * @param {{ reference: string, action: 'after'|'append' }} [location] Padrão: logo após o elemento assinado
    */
-  #assinarElemento(xml, tagName, pfxBuffer, pfxPassword) {
+  #assinarElemento(xml, tagName, pfxBuffer, pfxPassword, location) {
     const { privateKeyPem, certificatePem } = loadPfxCertificate(pfxBuffer, pfxPassword);
 
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
@@ -84,7 +100,7 @@ export class NFeSignService {
     });
 
     signedXml.computeSignature(xml, {
-      location: { reference: `//*[local-name()='${tagName}']`, action: 'after' },
+      location: location ?? { reference: `//*[local-name()='${tagName}']`, action: 'after' },
     });
 
     return signedXml.getSignedXml();
