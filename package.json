@@ -1,6 +1,6 @@
 {
   "name": "ghinfe",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Biblioteca Node.js para emissão de NF-e, NFC-e, NFS-e e DC-e — geração de XML, assinatura A1, envio SEFAZ e filas Bull/Redis",
   "main": "src/index.js",
   "type": "module",
