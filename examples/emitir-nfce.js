@@ -32,7 +32,6 @@ const documento = {
     valorIcms: 1.98,
   }],
   pagamentos: [{ forma: '17', valor: 11.0 }],
-  csc: { idCSC: '000001', codigo: 'CODIGO-CSC-EXEMPLO-SEFAZ' },
   informacoesComplementares: 'NFC-e emitida pela biblioteca GHINFE',
 };
 

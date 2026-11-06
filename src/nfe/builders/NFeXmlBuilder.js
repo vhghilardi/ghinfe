@@ -7,8 +7,9 @@ import {
   normalizarItensReforma,
   somarTotaisReforma,
   appendTotaisIBSCBS,
-  appendIBSCBS,
 } from '../../reforma/ibscbs.js';
+import { appendImpostosItem, appendDetPag } from '../../shared/fiscal.helpers.js';
+import { somarTotaisIcms } from '../../shared/icms.js';
 
 /**
  * Monta o XML da NF-e (layout 4.00).
@@ -33,8 +34,6 @@ export class NFeXmlBuilder {
 
     const totalProdutos = itens.reduce((s, i) => s + i.valorTotal, 0);
     const valorFrete = documento.frete?.valor ?? 0;
-    const valorIcms = itens.reduce((s, i) => s + (i.valorIcms ?? 0), 0);
-    const valorNf = totalProdutos + valorFrete;
     const totaisReforma = comReforma ? somarTotaisReforma(itens) : null;
 
     const root = create({ version: '1.0', encoding: 'UTF-8' })
@@ -54,7 +53,7 @@ export class NFeXmlBuilder {
       .ele('dhEmi').txt(dhEmi).up()
       .ele('dhSaiEnt').txt(dhSaiEnt).up()
       .ele('tpNF').txt('1').up()
-      .ele('idDest').txt('1').up()
+      .ele('idDest').txt(String(this.#idDest(documento))).up()
       .ele('cMunFG').txt(documento.ide.codigoMunicipio).up()
       .ele('tpImp').txt('1').up()
       .ele('tpEmis').txt(String(documento.ide.tipoEmissao ?? 1)).up()
@@ -64,7 +63,7 @@ export class NFeXmlBuilder {
       .ele('indFinal').txt(String(documento.ide.consumidorFinal ?? 1)).up()
       .ele('indPres').txt(String(documento.ide.presenca ?? 1)).up()
       .ele('procEmi').txt('0').up()
-      .ele('verProc').txt('ghinfe-0.6.0').up()
+      .ele('verProc').txt('ghinfe-0.7.0').up()
       .up();
 
     const emit = inf.ele('emit');
@@ -88,7 +87,7 @@ export class NFeXmlBuilder {
     if (documento.destinatario.ie) dest.ele('IE').txt(documento.destinatario.ie).up();
     dest.up();
 
-    itens.forEach((item, index) => {
+    const totaisItens = itens.map((item, index) => {
       const det = inf.ele('det', { nItem: String(index + 1) });
       const prod = det.ele('prod');
       prod.ele('cProd').txt(item.codigo).up();
@@ -107,31 +106,21 @@ export class NFeXmlBuilder {
       prod.ele('indTot').txt('1').up();
       prod.up();
 
-      const imposto = det.ele('imposto');
-      const icms = imposto.ele('ICMS').ele('ICMS00');
-      icms.ele('orig').txt('0').up();
-      icms.ele('CST').txt(item.cst ?? '00').up();
-      icms.ele('modBC').txt('0').up();
-      icms.ele('vBC').txt(this.#decimal(item.valorTotal, 2)).up();
-      icms.ele('pICMS').txt(this.#decimal(item.aliquotaIcms ?? 0, 4)).up();
-      icms.ele('vICMS').txt(this.#decimal(item.valorIcms ?? 0, 2)).up();
-      icms.up().up();
-      imposto.ele('PIS').ele('PISNT').ele('CST').txt('07').up().up().up();
-      imposto.ele('COFINS').ele('COFINSNT').ele('CST').txt('07').up().up().up();
-      if (item.reforma) appendIBSCBS(imposto, item.reforma);
-      imposto.up();
-      det.up();
+      return appendImpostosItem(det.ele('imposto'), item, { crt: documento.emitente.crt });
     });
+
+    const icmsTot = somarTotaisIcms(totaisItens);
+    const valorNf = totalProdutos + valorFrete + icmsTot.vST;
 
     const totalParent = inf.ele('total');
     const total = totalParent.ele('ICMSTot');
     total
-      .ele('vBC').txt(this.#decimal(totalProdutos, 2)).up()
-      .ele('vICMS').txt(this.#decimal(valorIcms, 2)).up()
+      .ele('vBC').txt(this.#decimal(icmsTot.vBC, 2)).up()
+      .ele('vICMS').txt(this.#decimal(icmsTot.vICMS, 2)).up()
       .ele('vICMSDeson').txt('0.00').up()
       .ele('vFCP').txt('0.00').up()
-      .ele('vBCST').txt('0.00').up()
-      .ele('vST').txt('0.00').up()
+      .ele('vBCST').txt(this.#decimal(icmsTot.vBCST, 2)).up()
+      .ele('vST').txt(this.#decimal(icmsTot.vST, 2)).up()
       .ele('vFCPST').txt('0.00').up()
       .ele('vFCPSTRet').txt('0.00').up()
       .ele('vProd').txt(this.#decimal(totalProdutos, 2)).up()
@@ -163,10 +152,7 @@ export class NFeXmlBuilder {
 
     const pag = inf.ele('pag');
     (documento.pagamentos ?? [{ forma: '01', valor: valorNf }]).forEach((p) => {
-      const detPag = pag.ele('detPag');
-      detPag.ele('tPag').txt(p.forma).up();
-      detPag.ele('vPag').txt(this.#decimal(p.valor, 2)).up();
-      detPag.up();
+      appendDetPag(pag, p);
     });
     pag.up();
 
@@ -175,6 +161,15 @@ export class NFeXmlBuilder {
     }
 
     return root.end({ prettyPrint: false, headless: false });
+  }
+
+  /** 1=interna, 2=interestadual, 3=exterior (UF do destinatário "EX"). */
+  #idDest(documento) {
+    if (documento.ide.destino) return documento.ide.destino;
+    const ufDest = documento.destinatario?.endereco?.uf?.toUpperCase();
+    if (ufDest === 'EX') return 3;
+    const ufEmit = documento.emitente.endereco?.uf?.toUpperCase();
+    return ufDest && ufEmit && ufDest !== ufEmit ? 2 : 1;
   }
 
   #validar(documento) {

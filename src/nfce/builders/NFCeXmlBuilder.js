@@ -2,7 +2,14 @@ import { create } from 'xmlbuilder2';
 import { NFE_VERSAO } from '../../constants/sefaz.js';
 import { formatSefazDateTime } from '../../utils/date.utils.js';
 import { GhinfeError } from '../../errors/GhinfeError.js';
-import { codigoUf, formatDecimal, appendEndereco, appendImpostosItem } from '../../shared/fiscal.helpers.js';
+import {
+  codigoUf,
+  formatDecimal,
+  appendEndereco,
+  appendImpostosItem,
+  appendDetPag,
+} from '../../shared/fiscal.helpers.js';
+import { somarTotaisIcms } from '../../shared/icms.js';
 
 /**
  * Monta XML da NFC-e (modelo 65, layout 4.00).
@@ -20,9 +27,7 @@ export class NFCeXmlBuilder {
     const ambiente = documento.ambiente ?? 2;
 
     const totalProdutos = documento.itens.reduce((s, i) => s + i.valorTotal, 0);
-    const valorIcms = documento.itens.reduce((s, i) => s + (i.valorIcms ?? 0), 0);
     const valorDesc = documento.itens.reduce((s, i) => s + (i.valorDesconto ?? 0), 0);
-    const valorNf = totalProdutos - valorDesc;
 
     const root = create({ version: '1.0', encoding: 'UTF-8' })
       .ele('NFe', { xmlns: 'http://www.portalfiscal.inf.br/nfe' })
@@ -51,7 +56,7 @@ export class NFCeXmlBuilder {
       .ele('indFinal').txt('1').up()
       .ele('indPres').txt(String(documento.ide.presenca ?? 1)).up()
       .ele('procEmi').txt('0').up()
-      .ele('verProc').txt('ghinfe-0.3.0').up()
+      .ele('verProc').txt('ghinfe-0.7.0').up()
       .up();
 
     // emit
@@ -66,7 +71,7 @@ export class NFCeXmlBuilder {
     emit.ele('CRT').txt(documento.emitente.crt).up();
     emit.up();
 
-    // dest — opcional na NFC-e (se informado CPF/CNPJ, exige indIEDest ou enderDest)
+    // dest — opcional na NFC-e; indIEDest é obrigatório no grupo e deve ser 9 (não contribuinte)
     if (documento.destinatario?.cpf || documento.destinatario?.cnpj) {
       const dest = inf.ele('dest');
       const docDest = (documento.destinatario.cnpj ?? documento.destinatario.cpf ?? '').replace(/\D/g, '');
@@ -77,14 +82,13 @@ export class NFCeXmlBuilder {
       }
       if (documento.destinatario.endereco) {
         appendEndereco(dest, 'enderDest', documento.destinatario.endereco);
-      } else {
-        dest.ele('indIEDest').txt('9').up();
       }
+      dest.ele('indIEDest').txt('9').up();
       dest.up();
     }
 
     // det — itens
-    documento.itens.forEach((item, index) => {
+    const totaisItens = documento.itens.map((item, index) => {
       const det = inf.ele('det', { nItem: String(index + 1) });
       const prod = det.ele('prod');
       prod.ele('cProd').txt(item.codigo).up();
@@ -103,19 +107,21 @@ export class NFCeXmlBuilder {
       prod.ele('indTot').txt('1').up();
       prod.up();
 
-      appendImpostosItem(det.ele('imposto'), item);
-      det.up();
+      return appendImpostosItem(det.ele('imposto'), item, { crt: documento.emitente.crt });
     });
+
+    const icmsTot = somarTotaisIcms(totaisItens);
+    const valorNf = totalProdutos - valorDesc + icmsTot.vST;
 
     // total
     const total = inf.ele('total').ele('ICMSTot');
     total
-      .ele('vBC').txt(formatDecimal(totalProdutos, 2)).up()
-      .ele('vICMS').txt(formatDecimal(valorIcms, 2)).up()
+      .ele('vBC').txt(formatDecimal(icmsTot.vBC, 2)).up()
+      .ele('vICMS').txt(formatDecimal(icmsTot.vICMS, 2)).up()
       .ele('vICMSDeson').txt('0.00').up()
       .ele('vFCP').txt('0.00').up()
-      .ele('vBCST').txt('0.00').up()
-      .ele('vST').txt('0.00').up()
+      .ele('vBCST').txt(formatDecimal(icmsTot.vBCST, 2)).up()
+      .ele('vST').txt(formatDecimal(icmsTot.vST, 2)).up()
       .ele('vFCPST').txt('0.00').up()
       .ele('vFCPSTRet').txt('0.00').up()
       .ele('vProd').txt(formatDecimal(totalProdutos, 2)).up()
@@ -137,12 +143,7 @@ export class NFCeXmlBuilder {
     // pag
     const pag = inf.ele('pag');
     const pagamentos = documento.pagamentos ?? [{ forma: '01', valor: valorNf }];
-    pagamentos.forEach((p) => {
-      const detPag = pag.ele('detPag');
-      detPag.ele('tPag').txt(p.forma).up();
-      detPag.ele('vPag').txt(formatDecimal(p.valor, 2)).up();
-      detPag.up();
-    });
+    pagamentos.forEach((p) => appendDetPag(pag, p));
     pag.up();
 
     // infAdic
@@ -170,9 +171,6 @@ export class NFCeXmlBuilder {
     }
     if (!documento.itens?.length) {
       throw new GhinfeError('A NFC-e deve conter ao menos um item', 'INVALID_ITENS');
-    }
-    if (!documento.csc?.idCSC || !documento.csc?.codigo) {
-      throw new GhinfeError('csc.idCSC e csc.codigo são obrigatórios para QR Code', 'INVALID_CSC');
     }
   }
 }

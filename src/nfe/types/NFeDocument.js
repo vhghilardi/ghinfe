@@ -17,7 +17,8 @@
  * @property {string} razaoSocial
  * @property {string} [nomeFantasia]
  * @property {string} ie
- * @property {string} crt 1=Simples, 2=Simples excesso, 3=Normal
+ * @property {string} crt 1=Simples Nacional, 2=Simples excesso sublimite, 3=Normal, 4=MEI.
+ *   CRT 1 e 4 geram ICMS por CSOSN (item.csosn); CRT 2 e 3 por CST (item.cst)
  * @property {NFeEndereco} endereco
  */
 
@@ -42,10 +43,27 @@
  * @property {number} valorUnitario
  * @property {number} valorTotal
  * @property {string} [ean]
- * @property {string} [cst] CST ICMS (ex: "00")
- * @property {number} [aliquotaIcms]
- * @property {number} [valorIcms]
+ * @property {number|string} [origem] Origem da mercadoria (orig), padrão 0
+ * @property {string} [cst] Regime normal (CRT 2/3): 00, 40, 41, 50 ou 60. Padrão 00
+ * @property {string} [csosn] Simples/MEI (CRT 1/4): 101, 102, 103, 201, 202, 203, 300, 400, 500 ou 900. Padrão 102
+ * @property {number} [aliquotaIcms] pICMS (CST 00 e CSOSN 900)
+ * @property {number} [valorIcms] vICMS; calculado (base × alíquota) se omitido
+ * @property {number} [baseIcms] vBC; padrão valorTotal
+ * @property {number} [modalidadeBcIcms] modBC, padrão 3 (valor da operação)
+ * @property {number} [aliquotaCreditoSn] pCredSN (CSOSN 101, 201 e opcional no 900)
+ * @property {number} [valorCreditoSn] vCredICMSSN; calculado se omitido
+ * @property {NFeIcmsSt} [icmsSt] ICMS-ST (CSOSN 201, 202, 203 e opcional no 900)
  * @property {import('../../reforma/ibscbs.js').TributacaoRTC} [reforma] IBS/CBS (PL_010)
+ */
+
+/**
+ * @typedef {Object} NFeIcmsSt
+ * @property {number} [modalidade] modBCST, padrão 4 (MVA)
+ * @property {number} [mva] pMVAST
+ * @property {number} [reducaoBase] pRedBCST
+ * @property {number} base vBCST
+ * @property {number} aliquota pICMSST
+ * @property {number} valor vICMSST
  */
 
 /**
@@ -58,8 +76,9 @@
 
 /**
  * @typedef {Object} NFePagamento
- * @property {string} forma 01=Dinheiro, 03=Cartão crédito, etc.
+ * @property {string} forma 01=Dinheiro, 03=Cartão crédito, 99=Outros etc.
  * @property {number} valor
+ * @property {string} [descricao] xPag; obrigatório para forma 99 (padrão "Outros")
  */
 
 /**
@@ -69,6 +88,8 @@
  * @property {number} [serie]
  * @property {number} numero
  * @property {number} [tipoEmissao] 1=Normal
+ * @property {number} [destino] idDest: 1=interna, 2=interestadual, 3=exterior.
+ *   Padrão: comparado pelas UFs do emitente e do destinatário (UF "EX" = exterior)
  * @property {number} [finalidade] 1=Normal
  * @property {number} [consumidorFinal] 0=Não, 1=Sim
  * @property {number} [presenca] 1=Presencial

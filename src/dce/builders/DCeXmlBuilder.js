@@ -61,7 +61,7 @@ export class DCeXmlBuilder {
     ide.ele('nSiteAutoriz').txt(String(chave.siteAutorizador));
     ide.ele('cDV').txt(chave.digitoVerificador);
     ide.ele('tpAmb').txt(String(ambiente));
-    ide.ele('verProc').txt('ghinfe-0.6.0');
+    ide.ele('verProc').txt('ghinfe-0.7.0');
 
     // emit
     const emit = inf.ele('emit');

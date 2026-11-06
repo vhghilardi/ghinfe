@@ -4,12 +4,7 @@ import { NFeSoapService } from '../../nfe/services/NFeSoapService.js';
 import { GhinfeError } from '../../errors/GhinfeError.js';
 import { gerarChaveAcesso, validarChaveAcesso } from '../../utils/chave.utils.js';
 import { SefazEndpointResolver } from '../../sefaz/SefazEndpointResolver.js';
-import {
-  extrairDigestValor,
-  gerarUrlQrCodeV3,
-  obterUrlChave,
-  inserirInfNFeSupl,
-} from '../utils/qrcode.utils.js';
+import { gerarUrlQrCodeV3, obterUrlChave, inserirInfNFeSupl } from '../utils/qrcode.utils.js';
 
 /**
  * Orquestrador da NFC-e (modelo 65).
@@ -23,7 +18,11 @@ export class NFCeService {
    *   sefazEndpoint?: string,
    *   mockScenario?: string,
    *   validarXsd?: boolean,
+   *   certificado?: { pfx: Buffer|string, senha: string },
+   *   ca?: string|string[],
+   *   timeout?: number,
    * }} [options]
+   *   certificado: usado no TLS mútuo com a SEFAZ quando não informado na chamada
    */
   constructor(options = {}) {
     this.options = options;
@@ -39,6 +38,9 @@ export class NFCeService {
       mock: options.mock ?? true,
       endpoint,
       mockScenario: options.mockScenario,
+      certificado: options.certificado,
+      ca: options.ca,
+      timeout: options.timeout,
     });
   }
 
@@ -70,14 +72,6 @@ export class NFCeService {
     return { ...documento, chaveAcesso };
   }
 
-  /** @param {import('../types/NFCeDocument.js').NFCeDocumento} documento */
-  #calcularTotais(documento) {
-    const valorProdutos = documento.itens.reduce((s, i) => s + i.valorTotal, 0);
-    const valorIcms = documento.itens.reduce((s, i) => s + (i.valorIcms ?? 0), 0);
-    const valorDesc = documento.itens.reduce((s, i) => s + (i.valorDesconto ?? 0), 0);
-    return { valorNF: valorProdutos - valorDesc, valorIcms };
-  }
-
   /**
    * Gera XML base (infNFe) sem QR Code — QR é adicionado após assinatura.
    * @param {import('../types/NFCeDocument.js').NFCeDocumento} documento
@@ -95,20 +89,10 @@ export class NFCeService {
    */
   adicionarQrCode(xmlAssinado, documento) {
     const doc = this.resolverDocumento(documento);
-    const { valorNF, valorIcms } = this.#calcularTotais(doc);
-    const digVal = extrairDigestValor(xmlAssinado);
-    const cDest = (doc.destinatario?.cnpj ?? doc.destinatario?.cpf ?? '').replace(/\D/g, '');
-
     const qrCode = gerarUrlQrCodeV3({
       chaveAcesso: doc.chaveAcesso,
       uf: doc.ide.uf,
       ambiente: doc.ambiente ?? 2,
-      cDest,
-      valorNF,
-      valorICMS: valorIcms,
-      digVal,
-      idCSC: doc.csc.idCSC,
-      csc: doc.csc.codigo,
     });
 
     const urlChave = obterUrlChave(doc.ide.uf, doc.ambiente ?? 2);
@@ -147,7 +131,7 @@ export class NFCeService {
     }
 
     const { xml, qrCode } = this.gerarXmlAssinado(doc, certificado);
-    const retorno = await this.soapService.autorizar(xml, doc.chaveAcesso);
+    const retorno = await this.soapService.autorizar(xml, doc.chaveAcesso, undefined, certificado);
 
     return {
       chaveAcesso: doc.chaveAcesso,
@@ -163,8 +147,13 @@ export class NFCeService {
     return this.xmlService.validarXml(xml);
   }
 
-  async enviar(xmlAssinado, chaveAcesso) {
-    return this.soapService.autorizar(xmlAssinado, chaveAcesso);
+  /**
+   * @param {string} xmlAssinado
+   * @param {string} chaveAcesso
+   * @param {{ pfx: Buffer|string, senha: string }} [certificado] Padrão: options.certificado
+   */
+  async enviar(xmlAssinado, chaveAcesso, certificado) {
+    return this.soapService.autorizar(xmlAssinado, chaveAcesso, undefined, certificado);
   }
 
   /** @param {Awaited<ReturnType<NFCeService['emitir']>>} resultado */

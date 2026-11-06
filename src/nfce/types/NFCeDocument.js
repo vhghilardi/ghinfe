@@ -34,7 +34,7 @@
  * @property {NFCeDestinatario} [destinatario]
  * @property {NFCeItem[]} itens
  * @property {NFCePagamento[]} [pagamentos]
- * @property {NFCeCsc} csc Dados do CSC para QR Code
+ * @property {NFCeCsc} [csc] Não usado: o QR Code v3 on-line (NT 2025.001) dispensa o CSC
  * @property {string} [informacoesComplementares]
  * @property {string} [informacoesFisco]
  */

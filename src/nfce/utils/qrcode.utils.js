@@ -12,8 +12,9 @@ export function extrairDigestValor(xmlAssinado) {
 }
 
 /**
- * Gera hash QR Code NFC-e versão 3.
- * SHA1(chave + versao + tpAmb + cDest + vNF + vICMS + digVal + idCSC + CSC)
+ * Hash SHA-1 do QR Code no formato antigo desta lib. O QR Code v3 on-line (NT 2025.001)
+ * não usa CSC nem hash.
+ * @deprecated Mantida por compatibilidade; não é usada por gerarUrlQrCodeV3.
  */
 export function gerarHashQrCodeV3(chaveAcesso, ambiente, cDest, vNF, vICMS, digVal, idCSC, csc) {
   const vNFStr = Number(vNF).toFixed(2);
@@ -24,18 +25,14 @@ export function gerarHashQrCodeV3(chaveAcesso, ambiente, cDest, vNF, vICMS, digV
 }
 
 /**
- * Monta URL do QR Code NFC-e versão 3 (layout exigido pelo XSD PL_009_V4).
+ * Monta URL do QR Code NFC-e versão 3 para emissão on-line (NT 2025.001):
+ * {url}?p={chave}|3|{tpAmb}. O CSC foi descontinuado nesta versão.
+ * Contingência off-line (tpEmis=9) exige assinatura e não é suportada.
  * @param {{
  *   chaveAcesso: string,
  *   uf: string,
  *   ambiente?: number,
- *   cDest?: string,
- *   valorNF: number,
- *   valorICMS?: number,
- *   digVal: string,
- *   idCSC: string,
- *   csc: string,
- * }} params
+ * }} params Demais campos (cDest, valorNF, idCSC, csc...) são ignorados
  */
 export function gerarUrlQrCodeV3(params) {
   const ambiente = params.ambiente ?? 2;
@@ -48,24 +45,14 @@ export function gerarUrlQrCodeV3(params) {
       'NFCE_QRCODE_URL_MISSING'
     );
   }
+  if (params.chaveAcesso?.[34] === '9') {
+    throw new GhinfeError(
+      'QR Code v3 em contingência off-line (tpEmis=9) não é suportado',
+      'NFCE_QRCODE_OFFLINE_NAO_SUPORTADO'
+    );
+  }
 
-  const cDest = (params.cDest ?? '').replace(/\D/g, '');
-  const vNFStr = Number(params.valorNF).toFixed(2);
-  const vICMSStr = Number(params.valorICMS ?? 0).toFixed(2);
-  const idCSC = params.idCSC.padStart(6, '0');
-  const hash = gerarHashQrCodeV3(
-    params.chaveAcesso,
-    ambiente,
-    cDest,
-    params.valorNF,
-    params.valorICMS ?? 0,
-    params.digVal,
-    idCSC,
-    params.csc
-  );
-
-  const p = `${params.chaveAcesso}|3|${ambiente}|${cDest}|${vNFStr}|${vICMSStr}|${params.digVal}|${idCSC}|${hash}`;
-  return `${baseUrl}?p=${p}`;
+  return `${baseUrl}?p=${params.chaveAcesso}|3|${ambiente}`;
 }
 
 /**
@@ -81,12 +68,13 @@ export function obterUrlChave(uf, ambiente = 2) {
 }
 
 /**
- * Insere infNFeSupl no XML assinado da NFC-e.
+ * Insere infNFeSupl no XML assinado da NFC-e, entre infNFe e Signature (ordem do XSD).
+ * A assinatura cobre só infNFe, então a inserção não a invalida.
  * @param {string} xmlAssinado
  * @param {string} qrCodeUrl
  * @param {string} urlChave
  */
 export function inserirInfNFeSupl(xmlAssinado, qrCodeUrl, urlChave) {
   const supl = `<infNFeSupl><qrCode><![CDATA[${qrCodeUrl}]]></qrCode><urlChave>${urlChave}</urlChave></infNFeSupl>`;
-  return xmlAssinado.replace('</NFe>', `${supl}</NFe>`);
+  return xmlAssinado.replace('</infNFe>', `</infNFe>${supl}`);
 }

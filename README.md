@@ -4,11 +4,13 @@ Biblioteca Node.js para emissão de documentos fiscais eletrônicos brasileiros:
 
 Inspirada na filosofia do [ACBr](https://projetoacbr.com.br/) (objeto de domínio → XML → assinatura → envio SEFAZ), a GHINFE separa responsabilidades em serviços modulares, prontos para integração com **Sequelize**, filas **Bull/Redis** e ambientes de alta escala.
 
-## Funcionalidades (v0.6)
+## Funcionalidades (v0.7)
 
 | Módulo | Status |
 |--------|--------|
 | Geração XML NF-e / NFC-e / NFS-e | ✅ |
+| Envio real à SEFAZ (TLS mútuo com A1, SOAP 1.2, retorno síncrono) | ✅ |
+| ICMS por regime: Simples Nacional/MEI (CSOSN) e regime normal (CST) | ✅ |
 | DC-e (modelo 99): geração, autorização, consulta, status e cancelamento | ✅ |
 | DACE completa e resumida (HTML imprimível, CODE-128C + QR Code) | ✅ |
 | IBS/CBS injetado no XML NF-e (item + totais) | ✅ experimental |
@@ -24,52 +26,52 @@ ghinfe/
 ├── docs/
 │   ├── openapi.yaml              # Especificação Swagger/OpenAPI
 │   └── developer-guide.html      # Guia completo para desenvolvedores
-├── examples/
-│   ├── emitir-nfe.js             # Exemplo de geração + mock
-│   └── mock-sefaz.js             # Cenários de retorno SEFAZ
+├── examples/                     # Um script por fluxo (npm run example:*)
+├── schemas/
+│   ├── nfe/PL_009_V4/            # XSD oficiais NF-e/NFC-e 4.00
+│   └── dce/                      # XSD oficiais DC-e 1.00 (NT 2024.001)
 ├── src/
-│   ├── api/
-│   │   └── server.js             # Servidor Express + Swagger UI
-│   ├── constants/
-│   │   └── sefaz.js              # UF, cStat, URLs, versão layout
-│   ├── errors/
-│   │   ├── GhinfeError.js
-│   │   └── SefazError.js         # Erros reais da SEFAZ (cStat)
+│   ├── api/server.js             # Servidor Express + Swagger UI
+│   ├── constants/sefaz.js        # UF, cStat, versão layout
+│   ├── errors/                   # GhinfeError, SefazError, XsdValidationError
 │   ├── nfe/
-│   │   ├── builders/
-│   │   │   ├── NFeXmlBuilder.js
-│   │   │   └── NFeEventoXmlBuilder.js  # Cancelamento, CC-e
-│   │   ├── mocks/
-│   │   │   └── sefaz-responses.js
-│   │   ├── services/
-│   │   │   ├── NFeXmlService.js
-│   │   │   ├── NFeSignService.js
-│   │   │   ├── NFeSoapService.js
-│   │   │   ├── NFeEventoService.js     # Eventos SEFAZ
-│   │   │   └── NFeService.js
+│   │   ├── builders/             # NFeXmlBuilder, NFeEventoXmlBuilder (cancelamento, CC-e)
+│   │   ├── mocks/                # Retornos SEFAZ simulados
+│   │   ├── services/             # NFeService, NFeXmlService, NFeSignService, NFeSoapService, NFeEventoService
 │   │   └── types/
-│   │       ├── NFeDocument.js
-│   │       └── NFeEvento.js
+│   ├── nfce/                     # NFC-e (modelo 65) + QR Code v3
+│   ├── nfse/                     # NFS-e (layouts municipais)
+│   ├── dce/                      # DC-e (modelo 99): builders, services, DACE
+│   ├── danfe/                    # DANFE / DANFCE em HTML
+│   ├── reforma/                  # IBS/CBS (reforma tributária)
+│   ├── shared/
+│   │   ├── icms.js               # ICMS por CRT (CST / CSOSN) e totais
+│   │   └── fiscal.helpers.js     # Endereço, impostos do item, pagamentos
 │   ├── sefaz/
-│   │   ├── endpoints.registry.js   # URLs por autorizador (SVRS, SP, MG...)
-│   │   └── SefazEndpointResolver.js
-│   ├── nfse/
-│   │   ├── builders/NFSeXmlBuilder.js
-│   │   ├── services/               # NFSeService, NFSeSoapService
-│   │   └── NFSeMunicipioResolver.js
-│   ├── queue/
-│   │   ├── NFeQueue.js
-│   │   ├── NFCeQueue.js
-│   │   └── NFSeQueue.js
-│   ├── utils/
-│   │   ├── certificate.utils.js
-│   │   ├── chave.utils.js          # Chave de acesso + DV
-│   │   ├── date.utils.js
-│   │   └── xml.utils.js
+│   │   ├── endpoints.registry.js # URLs por autorizador (SVRS, SP, MG...)
+│   │   ├── SefazEndpointResolver.js
+│   │   ├── httpsAgent.js         # TLS mútuo com o A1
+│   │   └── ca/                   # Raiz ICP-Brasil v10
+│   ├── queue/                    # NFeQueue, NFCeQueue, NFSeQueue (Bull)
+│   ├── validation/               # XsdValidator + caminhos dos schemas
+│   ├── utils/                    # Certificado, chave de acesso, datas, Code 128
 │   └── index.js                  # Exports públicos
 ├── .env.example
 └── package.json
 ```
+
+## Novidades da 0.7.0
+
+Correções que impediam a emissão real e ajustes de comportamento:
+
+- **Envio à SEFAZ:** TLS mútuo com o certificado A1 (antes a conexão saía sem certificado); NF-e como XML dentro do `enviNFe` (antes ia em base64); SOAP action e envelopes sem declaração XML aninhada; retorno lido do `protNFe` (o lote vem 104 e a nota 100; 150, autorizada fora de prazo, também conta como autorizada).
+- **ICMS:** Simples Nacional/MEI por CSOSN e regime normal por CST, conforme `emitente.crt` (antes sempre `ICMS00`). `ICMSTot` passa a ser a soma dos itens (antes a base era o valor dos produtos mesmo sem ICMS).
+- **NF-e:** `idDest` pelas UFs do emitente e destinatário (antes fixo em 1) e `xPag` para `tPag` 99.
+- **NFC-e:** QR Code v3 on-line (NT 2025.001, sem CSC), `infNFeSupl` antes da assinatura e `indIEDest` sempre presente — antes todas reprovavam no XSD.
+- **Endpoints:** evento da SVRS e da SEFAZ-RS (`recepcaoevento4.asmx`) e homologação de MS corrigidos.
+- **Certificado:** o titular é escolhido pela chave privada (PFX com a AC antes do titular) e a cadeia vai no TLS.
+
+Mudanças de comportamento: `modBC` padrão 3 (valor da operação); `vICMS` calculado quando `valorIcms` é omitido; `csc` da NFC-e ignorado; eventos 136 e 155 contam como registrados.
 
 ## Instalação
 
@@ -230,13 +232,37 @@ const documento = {
   ide: { uf: 'SP', codigoMunicipio: '3550308', serie: 1, numero: 1 },
   emitente: { cnpj: '...', razaoSocial: '...', ie: '...', crt: '1', endereco: { /* ... */ } },
   itens: [{ codigo: '001', descricao: '...', ncm: '...', cfop: '5102', unidade: 'UN', quantidade: 1, valorUnitario: 10, valorTotal: 10 }],
-  csc: { idCSC: '000001', codigo: 'SEU-CSC-SEFAZ' },
 };
 
 const xml = service.gerarXml(documento);
-// QR Code v3 é adicionado após assinatura:
+// QR Code v3 on-line (NT 2025.001: ?p=chave|3|tpAmb, sem CSC) é adicionado após assinatura:
 const { xml: xmlCompleto, qrCode } = service.gerarXmlAssinado(documento, { pfx, senha });
 ```
+
+### ICMS por regime tributário
+
+O grupo ICMS de cada item segue o `emitente.crt`. Os totais (`ICMSTot`) são a soma dos itens: a base só inclui itens com ICMS destacado.
+
+| CRT | Campo do item | Valores suportados |
+|-----|---------------|--------------------|
+| 1 (Simples Nacional), 4 (MEI) | `csosn` (padrão `102`) | 101, 102, 103, 201, 202, 203, 300, 400, 500, 900 |
+| 2 (Simples excesso de sublimite), 3 (Normal) | `cst` (padrão `00`) | 00, 40, 41, 50, 60 |
+
+```javascript
+itens: [
+  { /* ... */ csosn: '102' },                                         // sem crédito
+  { /* ... */ csosn: '101', aliquotaCreditoSn: 2.56 },                // com crédito (vCredICMSSN calculado)
+  { /* ... */ csosn: '202', icmsSt: { mva: 40, base: 140, aliquota: 18, valor: 7.2 } },
+]
+// regime normal: { cst: '00', aliquotaIcms: 18 } → vICMS calculado se valorIcms for omitido
+```
+
+CST/CSOSN fora da lista gera `GhinfeError` em vez de XML inválido.
+
+Outros campos da NF-e calculados pela lib:
+
+- `idDest`: 1 (mesma UF), 2 (interestadual) ou 3 (destinatário com UF `EX`); force com `ide.destino`.
+- `xPag`: use `pagamentos: [{ forma: '99', valor, descricao: 'Boleto loja' }]`; sem `descricao`, a forma 99 sai como "Outros".
 
 ### DC-e — Declaração de Conteúdo eletrônica (modelo 99)
 
@@ -334,6 +360,12 @@ if (resultado.retorno.autorizado) {
   console.log('Protocolo:', resultado.retorno.protocolo);
 }
 ```
+
+Envio real (`mock: false`):
+
+- O certificado A1 é usado também no TLS mútuo exigido pela SEFAZ. O de `emitir`/`cancelar`/`cartaCorrecao` vale para a conexão; para `consultarStatus`, informe `certificado` no construtor (`new NFeService({ mock: false, uf: 'SP', certificado: { pfx, senha } })`).
+- A NF-e vai como XML dentro de `enviNFe` (SOAP 1.2, `indSinc=1`), e o resultado vem do `protNFe`: `retorno.cStat` é o da NF-e (ex.: 100) e `retorno.cStatLote` o do lote (104). `retorno.xmlProtocolo` é o `protNFe`.
+- A cadeia ICP-Brasil (raiz v10) dos servidores da SEFAZ já é confiável; CAs adicionais via `ca`.
 
 ### 4. Persistir no banco (Sequelize)
 

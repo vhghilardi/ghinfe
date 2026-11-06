@@ -27,7 +27,12 @@ export function criarPfxDePem(certificatePem, privateKeyPem, senha) {
  * Carrega certificado A1 (.pfx / .p12) e retorna chave privada + certificado PEM.
  * @param {Buffer|string} pfxBuffer
  * @param {string} password
- * @returns {{ privateKeyPem: string, certificatePem: string, certificate: forge.pki.Certificate }}
+ * @returns {{
+ *   privateKeyPem: string,
+ *   certificatePem: string,
+ *   chainPem: string,
+ *   certificate: forge.pki.Certificate,
+ * }} certificatePem: titular; chainPem: titular seguido das ACs contidas no PFX
  */
 export function loadPfxCertificate(pfxBuffer, password) {
   try {
@@ -35,27 +40,32 @@ export function loadPfxCertificate(pfxBuffer, password) {
     const p12Asn1 = forge.asn1.fromDer(buffer.toString('binary'));
     const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, password);
 
-    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
+    const certificados = (p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag] ?? [])
+      .map((bag) => bag.cert)
+      .filter(Boolean);
     const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
-
-    const certBag = certBags[forge.pki.oids.certBag]?.[0];
     const keyBag =
       keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0] ??
       p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag]?.[0];
 
-    if (!certBag?.cert || !keyBag?.key) {
+    // O PFX pode trazer as ACs antes do titular; o titular é o que casa com a chave privada
+    const privateKey = keyBag?.key;
+    const certificate =
+      certificados.find((c) => privateKey && c.publicKey?.n?.equals(privateKey.n)) ?? certificados[0];
+
+    if (!certificate || !privateKey) {
       throw new GhinfeError(
         'Certificado ou chave privada não encontrados no arquivo PFX',
         'CERT_NOT_FOUND'
       );
     }
 
-    const certificate = certBag.cert;
-    const privateKey = keyBag.key;
+    const cadeia = [certificate, ...certificados.filter((c) => c !== certificate)];
 
     return {
       privateKeyPem: forge.pki.privateKeyToPem(privateKey),
       certificatePem: forge.pki.certificateToPem(certificate),
+      chainPem: cadeia.map((c) => forge.pki.certificateToPem(c)).join(''),
       certificate,
     };
   } catch (error) {

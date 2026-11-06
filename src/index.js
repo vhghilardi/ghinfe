@@ -62,6 +62,8 @@ export {
   REFORMA_LAYOUT,
 } from './reforma/ibscbs.js';
 
+export { CRT, usaCsosn } from './shared/icms.js';
+
 export { XsdValidator } from './validation/XsdValidator.js';
 export { XSD_SCHEMAS } from './validation/schemas.js';
 

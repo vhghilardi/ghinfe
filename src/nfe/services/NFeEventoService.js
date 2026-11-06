@@ -42,7 +42,8 @@ export class NFeEventoService {
       xmlAssinado,
       dados.chaveAcesso,
       NFE_EVENTOS.CANCELAMENTO,
-      dados.idLote
+      dados.idLote,
+      certificado
     );
 
     return { tipo: 'cancelamento', xmlGerado: xml, xmlAssinado, retorno };
@@ -60,7 +61,8 @@ export class NFeEventoService {
       xmlAssinado,
       dados.chaveAcesso,
       NFE_EVENTOS.CARTA_CORRECAO,
-      dados.idLote
+      dados.idLote,
+      certificado
     );
 
     return { tipo: 'carta_correcao', xmlGerado: xml, xmlAssinado, retorno };
@@ -71,9 +73,10 @@ export class NFeEventoService {
    * @param {string} xmlAssinado
    * @param {string} chaveAcesso
    * @param {string} tpEvento
+   * @param {{ pfx: Buffer|string, senha: string }} [certificado] Padrão: certificado do serviço
    */
-  async enviar(xmlAssinado, chaveAcesso, tpEvento) {
-    return this.soapService.enviarEvento(xmlAssinado, chaveAcesso, tpEvento);
+  async enviar(xmlAssinado, chaveAcesso, tpEvento, certificado) {
+    return this.soapService.enviarEvento(xmlAssinado, chaveAcesso, tpEvento, undefined, certificado);
   }
 
   /**

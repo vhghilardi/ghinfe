@@ -63,13 +63,15 @@ export const SEFAZ_MOCK_RESPONSES = {
 export function buildMockProtNFeXml(chaveAcesso, resultado) {
   const nProt = resultado.nProt ?? '';
   const dhRecbto = new Date().toISOString().replace('Z', '-03:00');
+  const autorizado = resultado.cStat === SEFAZ_STATUS.AUTORIZADO;
 
+  // Como na SEFAZ (indSinc=1): lote 104 e o resultado da NF-e em protNFe
   return `<?xml version="1.0" encoding="UTF-8"?>
 <retEnviNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
   <tpAmb>2</tpAmb>
   <verAplic>MOCK_GHINFE_1.0</verAplic>
-  <cStat>${resultado.cStat}</cStat>
-  <xMotivo>${resultado.xMotivo}</xMotivo>
+  <cStat>${autorizado ? SEFAZ_STATUS.LOTE_PROCESSADO : resultado.cStat}</cStat>
+  <xMotivo>${autorizado ? 'Lote processado' : resultado.xMotivo}</xMotivo>
   <cUF>35</cUF>
   <dhRecbto>${dhRecbto}</dhRecbto>
   ${

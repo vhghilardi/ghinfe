@@ -1,5 +1,6 @@
 import { UF_IBGE } from '../constants/sefaz.js';
 import { appendIBSCBS } from '../reforma/ibscbs.js';
+import { appendIcms } from './icms.js';
 
 /** @param {string} uf */
 export function codigoUf(uf) {
@@ -31,18 +32,28 @@ export function appendEndereco(parent, tag, endereco) {
 }
 
 /**
+ * Anexa detPag. xPag é obrigatório quando tPag=99 (outros); sem descrição, usa "Outros".
+ * @param {import('xmlbuilder2').XMLBuilder} pag
+ * @param {import('../nfe/types/NFeDocument.js').NFePagamento} pagamento
+ */
+export function appendDetPag(pag, pagamento) {
+  const detPag = pag.ele('detPag');
+  detPag.ele('tPag').txt(pagamento.forma).up();
+  const descricao = pagamento.descricao ?? (pagamento.forma === '99' ? 'Outros' : undefined);
+  if (descricao) detPag.ele('xPag').txt(descricao).up();
+  detPag.ele('vPag').txt(formatDecimal(pagamento.valor, 2)).up();
+  detPag.up();
+}
+
+/**
+ * Anexa ICMS (conforme CRT do emitente), PIS, COFINS e IBS/CBS do item.
  * @param {import('xmlbuilder2').XMLBuilder} impostoNode
  * @param {import('../nfe/types/NFeDocument.js').NFeItem} item
+ * @param {{ crt: string|number }} opcoes
+ * @returns {import('./icms.js').IcmsTotais} valores do item para ICMSTot
  */
-export function appendImpostosItem(impostoNode, item) {
-  const icms = impostoNode.ele('ICMS').ele('ICMS00');
-  icms.ele('orig').txt('0').up();
-  icms.ele('CST').txt(item.cst ?? '00').up();
-  icms.ele('modBC').txt('0').up();
-  icms.ele('vBC').txt(formatDecimal(item.valorTotal, 2)).up();
-  icms.ele('pICMS').txt(formatDecimal(item.aliquotaIcms ?? 0, 4)).up();
-  icms.ele('vICMS').txt(formatDecimal(item.valorIcms ?? 0, 2)).up();
-  icms.up().up();
+export function appendImpostosItem(impostoNode, item, opcoes) {
+  const totaisIcms = appendIcms(impostoNode, item, opcoes.crt);
 
   impostoNode.ele('PIS').ele('PISNT').ele('CST').txt('07').up().up().up();
   impostoNode.ele('COFINS').ele('COFINSNT').ele('CST').txt('07').up().up().up();
@@ -50,4 +61,6 @@ export function appendImpostosItem(impostoNode, item) {
   if (item.reforma) {
     appendIBSCBS(impostoNode, item.reforma);
   }
+
+  return totaisIcms;
 }

@@ -15,11 +15,17 @@ import { SefazEndpointResolver } from '../../sefaz/SefazEndpointResolver.js';
  *   sefazEventoEndpoint?: string,
  *   mockScenario?: string,
  *   mockEventoScenario?: string,
+ *   certificado?: { pfx: Buffer|string, senha: string },
+ *   ca?: string|string[],
+ *   timeout?: number,
  * }} options
  */
 function buildSoapOptions(options) {
+  const conexao = { certificado: options.certificado, ca: options.ca, timeout: options.timeout };
+
   if (options.mock ?? true) {
     return {
+      ...conexao,
       mock: true,
       endpoint: options.sefazEndpoint,
       eventoEndpoint: options.sefazEventoEndpoint,
@@ -30,6 +36,7 @@ function buildSoapOptions(options) {
 
   if (options.sefazEndpoint) {
     return {
+      ...conexao,
       mock: false,
       endpoint: options.sefazEndpoint,
       eventoEndpoint: options.sefazEventoEndpoint,
@@ -38,10 +45,10 @@ function buildSoapOptions(options) {
 
   if (options.uf) {
     const urls = SefazEndpointResolver.paraNFe(options.uf, options.ambiente ?? 2);
-    return { mock: false, endpoint: urls.endpoint, eventoEndpoint: urls.eventoEndpoint };
+    return { ...conexao, mock: false, endpoint: urls.endpoint, eventoEndpoint: urls.eventoEndpoint };
   }
 
-  return { mock: true };
+  return { ...conexao, mock: true };
 }
 
 /**
@@ -58,7 +65,12 @@ export class NFeService {
    *   mockScenario?: string,
    *   mockEventoScenario?: string,
    *   validarXsd?: boolean,
+   *   certificado?: { pfx: Buffer|string, senha: string },
+   *   ca?: string|string[],
+   *   timeout?: number,
    * }} [options]
+   *   certificado: usado no TLS mútuo com a SEFAZ quando não informado na chamada
+   *   (obrigatório para consultarStatus fora do mock)
    */
   constructor(options = {}) {
     this.options = options;
@@ -117,7 +129,7 @@ export class NFeService {
 
     const xml = this.xmlService.gerarXml(doc);
     const xmlAssinado = this.signService.assinar(xml, certificado.pfx, certificado.senha);
-    const retorno = await this.soapService.autorizar(xmlAssinado, doc.chaveAcesso, idLote);
+    const retorno = await this.soapService.autorizar(xmlAssinado, doc.chaveAcesso, idLote, certificado);
 
     return { chaveAcesso: doc.chaveAcesso, xmlGerado: xml, xmlAssinado, retorno };
   }
@@ -133,8 +145,13 @@ export class NFeService {
     return this.signService.assinar(xml, certificado.pfx, certificado.senha);
   }
 
-  async enviar(xmlAssinado, chaveAcesso) {
-    return this.soapService.autorizar(xmlAssinado, chaveAcesso);
+  /**
+   * @param {string} xmlAssinado
+   * @param {string} chaveAcesso
+   * @param {{ pfx: Buffer|string, senha: string }} [certificado] Padrão: options.certificado
+   */
+  async enviar(xmlAssinado, chaveAcesso, certificado) {
+    return this.soapService.autorizar(xmlAssinado, chaveAcesso, undefined, certificado);
   }
 
   validarXsd(xml, options = {}) {
@@ -165,13 +182,14 @@ export class NFeService {
    * Consulta status do webservice SEFAZ (NfeStatusServico4).
    * @param {string} [uf]
    * @param {number} [ambiente]
+   * @param {{ pfx: Buffer|string, senha: string }} [certificado] Padrão: options.certificado
    */
-  async consultarStatus(uf, ambiente) {
+  async consultarStatus(uf, ambiente, certificado) {
     const ufConsulta = uf ?? this.options.uf;
     if (!ufConsulta) {
       throw new GhinfeError('UF é obrigatória para consultar status SEFAZ', 'STATUS_UF_REQUIRED');
     }
-    return this.soapService.consultarStatus(ufConsulta, ambiente ?? this.options.ambiente ?? 2);
+    return this.soapService.consultarStatus(ufConsulta, ambiente ?? this.options.ambiente ?? 2, certificado);
   }
 
   toPersistencePayload(resultado) {

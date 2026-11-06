@@ -377,7 +377,7 @@ components:
 
     NFCeDocumento:
       type: object
-      required: [ide, emitente, itens, csc]
+      required: [ide, emitente, itens]
       properties:
         ambiente: { type: integer, example: 2 }
         ide:
@@ -407,7 +407,8 @@ components:
             type: object
         csc:
           type: object
-          required: [idCSC, codigo]
+          deprecated: true
+          description: Não usado — o QR Code v3 on-line (NT 2025.001) dispensa o CSC
           properties:
             idCSC: { type: string, example: '000001' }
             codigo: { type: string, example: 'SEU-CSC-SEFAZ' }

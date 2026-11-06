@@ -56,7 +56,6 @@ const nfceDoc = {
     unidade: 'UN', quantidade: 1, valorUnitario: 15, valorTotal: 15,
   }],
   pagamentos: [{ forma: '01', valor: 15 }],
-  csc: { idCSC: '000001', codigo: 'CSC-EXEMPLO' },
 };
 
 const nfceService = new NFCeService({ mock: true });

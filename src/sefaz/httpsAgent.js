@@ -20,12 +20,12 @@ export const ICP_BRASIL_RAIZ_V10 = fs.readFileSync(path.join(__dirname, 'ca/icp-
  *   ca: CAs adicionais; as raízes padrão do Node e a ICP-Brasil v10 são sempre incluídas
  */
 export function criarHttpsAgentSefaz(certificado, options = {}) {
-  const { privateKeyPem, certificatePem } = loadPfxCertificate(certificado.pfx, certificado.senha);
+  const { privateKeyPem, chainPem } = loadPfxCertificate(certificado.pfx, certificado.senha);
   const extras = [options.ca ?? []].flat();
 
   return new https.Agent({
     key: privateKeyPem,
-    cert: certificatePem,
+    cert: chainPem,
     ca: [...tls.rootCertificates, ICP_BRASIL_RAIZ_V10, ...extras],
     minVersion: 'TLSv1.2',
     keepAlive: options.keepAlive ?? true,

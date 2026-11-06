@@ -13,22 +13,36 @@ import {
 } from '../mocks/sefaz-responses.js';
 import { UF_IBGE } from '../../constants/sefaz.js';
 import { SEFAZ_SERVICO, SefazEndpointResolver } from '../../sefaz/SefazEndpointResolver.js';
+import { criarHttpsAgentSefaz } from '../../sefaz/httpsAgent.js';
+
+const NFE_NAMESPACE = 'http://www.portalfiscal.inf.br/nfe';
+
+/** Serviço WSDL e operação (action SOAP 1.2) de cada web service da NF-e 4.00. */
+const WEBSERVICES = {
+  autorizacao: { wsdl: 'NFeAutorizacao4', operacao: 'nfeAutorizacaoLote' },
+  evento: { wsdl: 'NFeRecepcaoEvento4', operacao: 'nfeRecepcaoEvento' },
+  status: { wsdl: 'NFeStatusServico4', operacao: 'nfeStatusServicoNF' },
+};
+
+const semDeclaracao = (xml) => xml.replace(/^\s*<\?xml[^>]*\?>\s*/, '');
 
 /**
  * Extrai cStat e xMotivo de um XML de retorno SEFAZ.
+ * No modo síncrono o lote vem com cStat 104 e o resultado da NF-e fica em protNFe.
  * @param {string} xml
  */
 function parseRetorno(xml) {
-  const cStatMatch = xml.match(/<cStat>(\d+)<\/cStat>/);
-  const xMotivoMatch = xml.match(/<xMotivo>([^<]+)<\/xMotivo>/);
-  const nProtMatch = xml.match(/<nProt>(\d+)<\/nProt>/);
-  const chNFeMatch = xml.match(/<chNFe>(\d{44})<\/chNFe>/);
+  const protNFe = xml.match(/<protNFe[\s>][\s\S]*?<\/protNFe>/)?.[0];
+  const fonte = protNFe ?? xml;
+  const tag = (src, nome) => src.match(new RegExp(`<${nome}>([^<]*)</${nome}>`))?.[1];
 
   return {
-    cStat: cStatMatch?.[1] ?? '999',
-    xMotivo: xMotivoMatch?.[1] ?? 'Retorno não identificado',
-    nProt: nProtMatch?.[1],
-    chNFe: chNFeMatch?.[1],
+    cStat: tag(fonte, 'cStat') ?? '999',
+    xMotivo: tag(fonte, 'xMotivo') ?? 'Retorno não identificado',
+    cStatLote: tag(xml, 'cStat'),
+    nProt: tag(fonte, 'nProt'),
+    chNFe: tag(fonte, 'chNFe'),
+    protNFe,
     xmlRetorno: xml,
   };
 }
@@ -39,41 +53,116 @@ function parseRetorno(xml) {
  */
 export class NFeSoapService {
   /**
-   * @param {{ mock?: boolean, endpoint?: string, eventoEndpoint?: string, timeout?: number, mockScenario?: string, mockEventoScenario?: string }} [options]
+   * @param {{
+   *   mock?: boolean,
+   *   endpoint?: string,
+   *   eventoEndpoint?: string,
+   *   statusEndpoint?: string,
+   *   certificado?: { pfx: Buffer|string, senha: string },
+   *   ca?: string|string[],
+   *   timeout?: number,
+   *   mockScenario?: string,
+   *   mockEventoScenario?: string,
+   *   mockStatusScenario?: string,
+   * }} [options]
+   *   certificado: A1 usado no TLS mútuo exigido pela SEFAZ (pode ser informado por chamada)
+   *   ca: CAs extras além das raízes do Node e da ICP-Brasil v10
    */
   constructor(options = {}) {
     this.mock = options.mock ?? true;
     this.endpoint = options.endpoint;
     this.eventoEndpoint = options.eventoEndpoint;
     this.statusEndpoint = options.statusEndpoint;
+    this.certificado = options.certificado;
+    this.ca = options.ca;
     this.timeout = options.timeout ?? 30000;
     this.mockScenario = options.mockScenario ?? 'autorizado';
     this.mockEventoScenario = options.mockEventoScenario ?? 'registrado';
     this.mockStatusScenario = options.mockStatusScenario ?? 'ok';
+    this.agentes = new WeakMap();
+  }
+
+  /** @param {{ pfx: Buffer|string, senha: string }} [certificado] */
+  #httpsAgent(certificado) {
+    const cert = certificado ?? this.certificado;
+    if (!cert?.pfx) {
+      throw new GhinfeError(
+        'Certificado A1 obrigatório para comunicar com a SEFAZ (TLS mútuo). Informe options.certificado ou o certificado na chamada',
+        'SEFAZ_CERTIFICADO_AUSENTE'
+      );
+    }
+    if (!this.agentes.has(cert)) {
+      this.agentes.set(cert, criarHttpsAgentSefaz(cert, { ca: this.ca }));
+    }
+    return this.agentes.get(cert);
+  }
+
+  /**
+   * Envelope SOAP 1.2 com o XML de dados direto em nfeDadosMsg (sem base64, sem declaração aninhada).
+   * @param {keyof typeof WEBSERVICES} servico
+   * @param {string} xmlDados
+   */
+  #envelope(servico, xmlDados) {
+    const { wsdl } = WEBSERVICES[servico];
+    return (
+      '<?xml version="1.0" encoding="utf-8"?>' +
+      '<soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body>' +
+      `<nfeDadosMsg xmlns="${NFE_NAMESPACE}/wsdl/${wsdl}">${semDeclaracao(xmlDados)}</nfeDadosMsg>` +
+      '</soap12:Body></soap12:Envelope>'
+    );
+  }
+
+  /**
+   * @param {keyof typeof WEBSERVICES} servico
+   * @param {string} url
+   * @param {string} envelope
+   * @param {{ pfx: Buffer|string, senha: string }} [certificado]
+   * @returns {Promise<string>} conteúdo de nfeResultMsg
+   */
+  async #post(servico, url, envelope, certificado) {
+    const { wsdl, operacao } = WEBSERVICES[servico];
+    try {
+      const response = await axios.post(url, envelope, {
+        httpsAgent: this.#httpsAgent(certificado),
+        headers: {
+          'Content-Type': `application/soap+xml; charset=utf-8; action="${NFE_NAMESPACE}/wsdl/${wsdl}/${operacao}"`,
+        },
+        timeout: this.timeout,
+        responseType: 'text',
+      });
+      const bodyMatch = response.data.match(/<nfeResultMsg[^>]*>([\s\S]*?)<\/nfeResultMsg>/);
+      return bodyMatch?.[1] ?? response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new GhinfeError(
+          `Falha na comunicação SOAP (${wsdl}) com SEFAZ: ${error.message}`,
+          'SEFAZ_HTTP_ERROR',
+          { status: error.response?.status, data: error.response?.data }
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Monta enviNFe síncrono com a NF-e assinada como XML (não base64).
+   * @param {string} xmlNFeAssinado
+   * @param {string} [idLote]
+   */
+  buildEnviNFe(xmlNFeAssinado, idLote = '1') {
+    return (
+      `<enviNFe xmlns="${NFE_NAMESPACE}" versao="4.00">` +
+      `<idLote>${idLote}</idLote><indSinc>1</indSinc>${semDeclaracao(xmlNFeAssinado)}</enviNFe>`
+    );
   }
 
   /**
    * Monta envelope SOAP para NFeAutorizacao4.
    * @param {string} xmlNFeAssinado
-   * @param {string} idLote
+   * @param {string} [idLote]
    */
-  buildAutorizacaoEnvelope(xmlNFeAssinado, idLote) {
-    const nfeBase64 = Buffer.from(xmlNFeAssinado, 'utf-8').toString('base64');
-
-    return `<?xml version="1.0" encoding="utf-8"?>
-<soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-  xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
-  <soap12:Body>
-    <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4">
-      <enviNFe versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe">
-        <idLote>${idLote}</idLote>
-        <indSinc>1</indSinc>
-        <NFe>${nfeBase64}</NFe>
-      </enviNFe>
-    </nfeDadosMsg>
-  </soap12:Body>
-</soap12:Envelope>`;
+  buildAutorizacaoEnvelope(xmlNFeAssinado, idLote = '1') {
+    return this.#envelope('autorizacao', this.buildEnviNFe(xmlNFeAssinado, idLote));
   }
 
   /**
@@ -81,8 +170,9 @@ export class NFeSoapService {
    * @param {string} xmlNFeAssinado
    * @param {string} chaveAcesso
    * @param {string} [idLote]
+   * @param {{ pfx: Buffer|string, senha: string }} [certificado] Padrão: options.certificado
    */
-  async autorizar(xmlNFeAssinado, chaveAcesso, idLote = '1') {
+  async autorizar(xmlNFeAssinado, chaveAcesso, idLote = '1', certificado) {
     if (this.mock) {
       return this.#mockAutorizar(chaveAcesso);
     }
@@ -95,29 +185,8 @@ export class NFeSoapService {
     }
 
     const envelope = this.buildAutorizacaoEnvelope(xmlNFeAssinado, idLote);
-
-    try {
-      const response = await axios.post(this.endpoint, envelope, {
-        headers: {
-          'Content-Type': 'application/soap+xml; charset=utf-8',
-        },
-        timeout: this.timeout,
-        responseType: 'text',
-      });
-
-      const bodyMatch = response.data.match(/<nfeResultMsg[^>]*>([\s\S]*?)<\/nfeResultMsg>/);
-      const innerXml = bodyMatch?.[1] ?? response.data;
-      return this.#processarRetorno(innerXml);
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        throw new GhinfeError(
-          `Falha na comunicação SOAP com SEFAZ: ${error.message}`,
-          'SEFAZ_HTTP_ERROR',
-          { status: error.response?.status, data: error.response?.data }
-        );
-      }
-      throw error;
-    }
+    const innerXml = await this.#post('autorizacao', this.endpoint, envelope, certificado);
+    return this.#processarRetorno(innerXml);
   }
 
   /**
@@ -149,15 +218,18 @@ export class NFeSoapService {
   #processarRetorno(xml, meta = {}) {
     const retorno = parseRetorno(xml);
 
-    if (retorno.cStat === SEFAZ_STATUS.AUTORIZADO) {
+    // 150 = autorizado fora de prazo (ex.: emissão em contingência)
+    if ([SEFAZ_STATUS.AUTORIZADO, '150'].includes(retorno.cStat)) {
       return {
         sucesso: true,
         autorizado: true,
         cStat: retorno.cStat,
         xMotivo: retorno.xMotivo,
+        cStatLote: retorno.cStatLote,
         protocolo: retorno.nProt,
         chaveAcesso: retorno.chNFe,
-        xmlProtocolo: xml,
+        xmlProtocolo: retorno.protNFe ?? xml,
+        xmlRetorno: xml,
         ...meta,
       };
     }
@@ -168,12 +240,18 @@ export class NFeSoapService {
         autorizado: false,
         cStat: retorno.cStat,
         xMotivo: retorno.xMotivo,
-        xmlProtocolo: xml,
+        cStatLote: retorno.cStatLote,
+        xmlProtocolo: retorno.protNFe ?? xml,
+        xmlRetorno: xml,
         ...meta,
       };
     }
 
-    throw new SefazError(retorno.cStat, retorno.xMotivo, { xmlRetorno: xml, ...meta });
+    throw new SefazError(retorno.cStat, retorno.xMotivo, {
+      cStatLote: retorno.cStatLote,
+      xmlRetorno: xml,
+      ...meta,
+    });
   }
 
   /**
@@ -186,20 +264,11 @@ export class NFeSoapService {
 
   /**
    * Monta envelope SOAP para NFeRecepcaoEvento4.
-   * @param {string} xmlEventoAssinado
-   * @param {string} idLote
+   * O idLote já vem no envEvento montado pelo NFeEventoXmlBuilder.
+   * @param {string} xmlEventoAssinado envEvento assinado
    */
-  buildEventoEnvelope(xmlEventoAssinado, idLote = '1') {
-    return `<?xml version="1.0" encoding="utf-8"?>
-<soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-  xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
-  <soap12:Body>
-    <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">
-      ${xmlEventoAssinado}
-    </nfeDadosMsg>
-  </soap12:Body>
-</soap12:Envelope>`;
+  buildEventoEnvelope(xmlEventoAssinado) {
+    return this.#envelope('evento', xmlEventoAssinado);
   }
 
   /**
@@ -207,9 +276,10 @@ export class NFeSoapService {
    * @param {string} xmlEventoAssinado
    * @param {string} chaveAcesso
    * @param {string} tpEvento
-   * @param {string} [idLote]
+   * @param {string} [idLote] Não usado no envio real (o idLote está no envEvento)
+   * @param {{ pfx: Buffer|string, senha: string }} [certificado] Padrão: options.certificado
    */
-  async enviarEvento(xmlEventoAssinado, chaveAcesso, tpEvento, idLote = '1') {
+  async enviarEvento(xmlEventoAssinado, chaveAcesso, tpEvento, idLote, certificado) {
     if (this.mock) {
       return this.#mockEnviarEvento(chaveAcesso, tpEvento);
     }
@@ -222,28 +292,9 @@ export class NFeSoapService {
       );
     }
 
-    const envelope = this.buildEventoEnvelope(xmlEventoAssinado, idLote);
-
-    try {
-      const response = await axios.post(endpoint, envelope, {
-        headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
-        timeout: this.timeout,
-        responseType: 'text',
-      });
-
-      const bodyMatch = response.data.match(/<nfeResultMsg[^>]*>([\s\S]*?)<\/nfeResultMsg>/);
-      const innerXml = bodyMatch?.[1] ?? response.data;
-      return this.#processarRetornoEvento(innerXml);
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        throw new GhinfeError(
-          `Falha na comunicação SOAP (evento) com SEFAZ: ${error.message}`,
-          'SEFAZ_HTTP_ERROR',
-          { status: error.response?.status, data: error.response?.data }
-        );
-      }
-      throw error;
-    }
+    const envelope = this.buildEventoEnvelope(xmlEventoAssinado);
+    const innerXml = await this.#post('evento', endpoint, envelope, certificado);
+    return this.#processarRetornoEvento(innerXml);
   }
 
   /**
@@ -279,7 +330,8 @@ export class NFeSoapService {
     const cStatEvento = cStatMatches[1]?.[1] ?? cStatLote;
     const xMotivo = xMotivoMatches.at(-1)?.[1] ?? 'Retorno não identificado';
 
-    if (cStatEvento === SEFAZ_STATUS.EVENTO_REGISTRADO) {
+    // 135 registrado, 136 registrado sem vínculo, 155 cancelamento homologado fora de prazo
+    if ([SEFAZ_STATUS.EVENTO_REGISTRADO, '136', '155'].includes(cStatEvento)) {
       return {
         sucesso: true,
         registrado: true,
@@ -320,20 +372,19 @@ export class NFeSoapService {
    */
   buildStatusServicoXml(uf, ambiente = 2) {
     const cUF = UF_IBGE[uf?.toUpperCase()] ?? '35';
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<consStatServ xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
-  <tpAmb>${ambiente}</tpAmb>
-  <cUF>${cUF}</cUF>
-  <xServ>STATUS</xServ>
-</consStatServ>`;
+    return (
+      `<consStatServ xmlns="${NFE_NAMESPACE}" versao="4.00">` +
+      `<tpAmb>${ambiente}</tpAmb><cUF>${cUF}</cUF><xServ>STATUS</xServ></consStatServ>`
+    );
   }
 
   /**
    * Consulta status do webservice SEFAZ (NfeStatusServico4).
    * @param {string} uf
    * @param {number} [ambiente]
+   * @param {{ pfx: Buffer|string, senha: string }} [certificado] Padrão: options.certificado
    */
-  async consultarStatus(uf, ambiente = 2) {
+  async consultarStatus(uf, ambiente = 2, certificado) {
     if (this.mock) {
       return this.#mockConsultarStatus(uf);
     }
@@ -359,34 +410,9 @@ export class NFeSoapService {
       );
     }
 
-    const dados = this.buildStatusServicoXml(uf, ambiente);
-    const envelope = `<?xml version="1.0" encoding="utf-8"?>
-<soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
-  <soap12:Body>
-    <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeStatusServico4">
-      ${dados}
-    </nfeDadosMsg>
-  </soap12:Body>
-</soap12:Envelope>`;
-
-    try {
-      const response = await axios.post(statusEndpoint, envelope, {
-        headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
-        timeout: this.timeout,
-        responseType: 'text',
-      });
-      const bodyMatch = response.data.match(/<nfeResultMsg[^>]*>([\s\S]*?)<\/nfeResultMsg>/);
-      return this.#processarRetornoStatus(bodyMatch?.[1] ?? response.data);
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        throw new GhinfeError(
-          `Falha na consulta de status SEFAZ: ${error.message}`,
-          'SEFAZ_HTTP_ERROR',
-          { status: error.response?.status }
-        );
-      }
-      throw error;
-    }
+    const envelope = this.#envelope('status', this.buildStatusServicoXml(uf, ambiente));
+    const innerXml = await this.#post('status', statusEndpoint, envelope, certificado);
+    return this.#processarRetornoStatus(innerXml);
   }
 
   /** @param {string} uf */
